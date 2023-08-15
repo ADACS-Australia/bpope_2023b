@@ -1,6 +1,8 @@
 import jax
 import numpy as np
 import pytest
+
+import bpope_2023b.src.jaxoplanet as jaxoplanet
 from jaxoplanet.experimental.starry.rotation import (
     R_full,
     Rdot,
@@ -9,6 +11,17 @@ from jaxoplanet.experimental.starry.rotation import (
 )
 from jaxoplanet.test_utils import assert_allclose
 
+"""
+Notes on functions, symbols, modules, etc.
+------------------------------------------
+
+expected = m.dotR(I, *u, theta):
+    
+    - asterisk passes in u vector argument as a tuple
+
+
+    
+"""
 
 @pytest.mark.parametrize("l_max", [4, 3, 2, 1, 0])
 @pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 1)])
@@ -16,8 +29,11 @@ def test_R_full(l_max, u):
     """Test full rotation matrix against symbolic one"""
     pytest.importorskip("sympy")
     theta = 0.1
+    # compute symbolic rotation matrix
     expected = np.array(R_symbolic(l_max, u, theta)).astype(float)
+    # compute jaxoplanet rotation matrix
     calc = R_full(l_max, u)(theta)
+    # check if matrices are equivalent
     assert_allclose(calc, expected)
 
 
@@ -28,23 +44,26 @@ def test_compare_starry_R_full(l_max, u):
     obtained from OpsYlm.dotR"""
     starry = pytest.importorskip("starry")
     theta = 0.1
-    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
-    I = np.eye(l_max**2 + 2 * l_max + 1)
-    expected = m.dotR(I, *u, theta)
-    calc = R_full(l_max, u)(theta)
-    assert_allclose(calc, expected)
+    m = starry._core.core.OpsYlm(l_max, 0, 0, 1) # initialise starry object
+    I = np.eye(l_max**2 + 2 * l_max + 1)         # matrix w/ diagonal of 1s
+    expected = m.dotR(I, *u, theta)              # compute starry R
+    calc = R_full(l_max, u)(theta)               # compute jaxoplanet R
+    assert_allclose(calc, expected)              # check equivalence
 
 
+# why do we have two functions performing same task two different ways?
 @pytest.mark.parametrize("l_max", [10, 7, 5, 4])
 @pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1)])
 def test_Rdot(l_max, u):
     """Test Rdot against R_full@"""
     np.random.seed(l_max)
-    y = np.random.rand(l_max**2 + 2 * l_max + 1)
-    r = Rdot(l_max, u)
-    r_full = R_full(l_max, u)
+    y = np.random.rand(l_max**2 + 2 * l_max + 1) # set random y (sh coefficients)
+    r = Rdot(l_max, u)                           # get jaxoplanet Rdot function
+    r_full = R_full(l_max, u)                    # get jaxoplanet R_full function
     theta = 0.1 * np.pi
-    assert_allclose(r(y, theta), r_full(theta) @ y)
+    # compute rotation of y with Rdot function
+    # compute matrix multiplication R@y with R_full function
+    assert_allclose(r(y, theta), r_full(theta) @ y) # check equivalence
 
 
 @pytest.mark.parametrize("l_max", [10, 7, 5, 4])
@@ -55,11 +74,11 @@ def test_compare_starry_dotR(l_max, u):
     theta = 0.1
     np.random.seed(l_max)
     n_max = l_max**2 + 2 * l_max + 1
-    M = np.random.rand(n_max, n_max)
-    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
-    expected = m.dotR(M, *u, theta)
-    calc = dotR(l_max, u)(M, theta)
-    assert_allclose(calc, expected)
+    M = np.random.rand(n_max, n_max)             # set random M
+    m = starry._core.core.OpsYlm(l_max, 0, 0, 1) # initialise starry object
+    expected = m.dotR(M, *u, theta)              # compute starry M@R
+    calc = dotR(l_max, u)(M, theta)              # compute jaxoplanet M@R
+    assert_allclose(calc, expected)              # check equivalence
 
 
 def test_u1u2_null_grad(u1=0.0, u2=0.0, u3=1.0):

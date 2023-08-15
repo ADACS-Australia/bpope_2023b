@@ -2,6 +2,7 @@
 
 from jaxoplanet import core as core
 from jaxoplanet import orbits as orbits
+from jaxoplanet import experimental as experimental
 
 __version__ = "0.0.0"
 __uri__ = "https://github.com/exoplanet-dev/jaxoplanet"

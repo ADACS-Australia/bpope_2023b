@@ -6,8 +6,32 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.special import roots_legendre
 
+import bpope_2023b.src.jaxoplanet as jaxoplanet
 from jaxoplanet.core.limb_dark import kite_area
 from jaxoplanet.types import Array
+
+
+""" Functions:
+    ---------
+    
+    solution_vector(l_max, order)
+    
+                    
+
+    kappas(b,r)    
+                    
+                    
+                    
+    q_integral(l_max, lam)
+        
+                    
+    
+    p_integral(order,l_max,b,r,kappa0)
+    
+                    
+    
+                    
+"""
 
 
 def solution_vector(l_max: int, order: int = 20) -> Callable[[Array, Array], Array]:
