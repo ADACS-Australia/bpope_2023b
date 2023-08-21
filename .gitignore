@@ -11,3 +11,6 @@ build
 dist
 poetry.lock
 .*_cache
+__pycache__
+.DS_Store
+
