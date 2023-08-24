@@ -32,6 +32,8 @@ def A2_inv(lmax):
             n += 1
     return res
 
+def A():
+    pass
 
 def ptilde(n):
     l = math.floor(math.sqrt(n))
