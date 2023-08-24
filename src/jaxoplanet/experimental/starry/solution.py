@@ -146,3 +146,6 @@ def p_integral(order: int, l_max: int, b: Array, r: Array, kappa0: Array) -> Arr
     inds = np.stack(ind)
 
     return P.at[inds].set(P0)
+
+def rotation_vector():
+    pass
