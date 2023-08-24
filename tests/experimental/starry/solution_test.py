@@ -6,7 +6,7 @@ import jax
 import numpy as np
 import pytest
 
-import bpope_2023b.src.jaxoplanet as jaxoplanet
+# import bpope_2023b.src.jaxoplanet as jaxoplanet
 from jaxoplanet.experimental.starry.solution import kappas, solution_vector
 from jaxoplanet.test_utils import assert_allclose
 

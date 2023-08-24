@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 
 from jax import jit, vmap, lax
-import bpope_2023b.src.jaxoplanet as jaxoplanet
+#import bpope_2023b.src.jaxoplanet as jaxoplanet
+# from bpope_2023b.src.jaxoplanet.experimental.starry.other import (tensordotRz)
+from jaxoplanet.experimental.starry.other import (tensordotRz)
 
 from jaxoplanet.types import Array
 from jaxoplanet.test_utils import assert_allclose
-
-from bpope_2023b.src.jaxoplanet.experimental.starry.other import (tensordotRz)
 
 # Display arrays in decimal notation, not scientific.
 np.set_printoptions(suppress = True)

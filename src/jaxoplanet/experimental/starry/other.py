@@ -7,7 +7,7 @@ from typing import Callable, Tuple
 from functools import partial
 
 from jax import jit, vmap, lax
-import bpope_2023b.src.jaxoplanet as jaxoplanet
+# import bpope_2023b.src.jaxoplanet as jaxoplanet
 from jaxoplanet.types import Array
 from jaxoplanet.test_utils import assert_allclose
 

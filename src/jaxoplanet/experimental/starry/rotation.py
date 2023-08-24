@@ -7,7 +7,7 @@ import numpy as np
 from jax.scipy.linalg import block_diag
 from scipy.special import factorial
 
-import bpope_2023b.src.jaxoplanet as jaxoplanet
+# import bpope_2023b.src.jaxoplanet as jaxoplanet
 from jaxoplanet.types import Array
 
 """ Functions:

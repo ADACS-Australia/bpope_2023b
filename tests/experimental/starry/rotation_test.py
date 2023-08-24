@@ -2,7 +2,7 @@ import jax
 import numpy as np
 import pytest
 
-import bpope_2023b.src.jaxoplanet as jaxoplanet
+#import bpope_2023b.src.jaxoplanet as jaxoplanet
 from jaxoplanet.experimental.starry.rotation import (
     R_full,
     Rdot,

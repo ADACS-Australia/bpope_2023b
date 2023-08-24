@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.special import roots_legendre
 
-import bpope_2023b.src.jaxoplanet as jaxoplanet
+# import bpope_2023b.src.jaxoplanet as jaxoplanet
 from jaxoplanet.core.limb_dark import kite_area
 from jaxoplanet.types import Array
 

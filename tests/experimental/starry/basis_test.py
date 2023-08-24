@@ -3,9 +3,9 @@ import warnings
 import numpy as np
 import pytest
 
-import bpope_2023b.src.jaxoplanet as jaxoplanet
-# from jaxoplanet.experimental.starry.basis import A1, A2_inv
-from jaxoplanet.src.jaxoplanet.experimental.starry.basis import A1, A2_inv
+from jaxoplanet.experimental.starry.basis import A1, A2_inv
+# import bpope_2023b.src.jaxoplanet as jaxoplanet
+# from jaxoplanet.src.jaxoplanet.experimental.starry.basis import A1, A2_inv
 
 """
 Notes on functions, symbols, modules, etc.
