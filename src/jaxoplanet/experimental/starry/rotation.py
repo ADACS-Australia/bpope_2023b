@@ -4,6 +4,7 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax import vmap
 from jax.scipy.linalg import block_diag
 from scipy.special import factorial
 
@@ -69,7 +70,6 @@ def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
     return alpha, beta, gamma
 
 
-# todo: type hinting callable
 def Rl(l: int):
     """Rotation matrix of the spherical harmonics map order l
 
@@ -97,8 +97,17 @@ def Rl(l: int):
     m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
     k = np.arange(0, 2 * l + 2)[:, None, None]
 
+    m = np.repeat(m[:, :, np.newaxis], 100, axis=2)
+    mp = np.repeat(mp[:, :, np.newaxis], 100, axis=2)
+    k = np.repeat(k[:, :, np.newaxis], 100, axis=3)
+    U = np.repeat(U[np.newaxis, :, :], 100, axis=0)
+
     @jax.jit
-    def _Rl(alpha: float, beta: float, gamma: float):
+    @partial(
+        jnp.vectorize,
+        signature=f"(m),(m),(m)->({U.shape[0]},{U.shape[1]},{U.shape[2]})",
+    )
+    def _Rl(alpha: Array, beta: Array, gamma: Array):
         dlm = (
             jnp.power(-1 + 0j, mp + m)
             * jnp.sqrt(
@@ -183,7 +192,8 @@ def Rdot(l_max: int, u: Array) -> Callable[[Array], Array]:
     return R
 
 
-def dotR(l_max: int, u: Array) -> Callable[[Array], Array]:
+# def dotR(l_max: int, u: Array) -> Callable[[Array], Array]:
+def dotR(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
     """Dot product M@R of a matrix M with the rotation matrix R
 
     Parameters
@@ -200,15 +210,19 @@ def dotR(l_max: int, u: Array) -> Callable[[Array], Array]:
         - M is a matrix (Array)
         - theta is the rotation angle in radians
     """
-    Rls = [Rl(l) for l in range(l_max + 1)]
+    Rls = [Rl(l) for l in range(l_max + 1)]  # -> 3 functions -> sub-matrices
     n_max = l_max**2 + 2 * l_max + 1
 
-    @partial(jnp.vectorize, signature=f"({n_max},{n_max}),()->({n_max},{n_max})")
+    @partial(jnp.vectorize, signature=f"(m,{n_max}),(m)->(m,{n_max})")
+    # @partial(jnp.vectorize, signature=f"({n_max},{n_max}),()->({n_max},{n_max})")
     def R(M: Array, theta: Array) -> Array:
         alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
         return np.hstack(
             [
-                M[:, l**2 : (l + 1) ** 2] @ Rls[l](alpha, beta, gamma)
+                # M[:, l**2 : (l + 1) ** 2] @ Rls[l](alpha, beta, gamma)
+                vmap(lambda m, r: m @ r, in_axes=(0, 0))(
+                    M[:, l**2 : (l + 1) ** 2], Rls[l](alpha, beta, gamma)
+                )
                 for l in range(l_max + 1)
             ]
         )
