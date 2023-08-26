@@ -70,6 +70,7 @@ def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
     return alpha, beta, gamma
 
 
+# TODO: type hinting callable
 def Rl(l: int):
     """Rotation matrix of the spherical harmonics map order l
 
@@ -97,17 +98,71 @@ def Rl(l: int):
     m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
     k = np.arange(0, 2 * l + 2)[:, None, None]
 
-    m = np.repeat(m[:, :, np.newaxis], 100, axis=2)
-    mp = np.repeat(mp[:, :, np.newaxis], 100, axis=2)
-    k = np.repeat(k[:, :, np.newaxis], 100, axis=3)
-    U = np.repeat(U[np.newaxis, :, :], 100, axis=0)
+    @jax.jit
+    def _Rl(alpha: float, beta: float, gamma: float):
+        dlm = (
+            jnp.power(-1 + 0j, mp + m)
+            * jnp.sqrt(
+                factorial(l - m)
+                * factorial(l + m)
+                * factorial(l - mp)
+                * factorial(l + mp)
+            )
+            * (-1) ** k
+            * jnp.cos(beta / 2) ** (2 * l + m - mp - 2 * k)
+            * jnp.sin(beta / 2) ** (-m + mp + 2 * k)
+            / (
+                factorial(k)
+                * factorial(l + m - k)
+                * factorial(l - mp - k)
+                * factorial(mp - m + k)
+            )
+        )
+
+        dlm = jnp.nansum(dlm, 0)
+        Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
+
+        return jnp.real(jnp.linalg.solve(U, Dlm.T) @ U)
+
+    return _Rl
+
+
+def Rl_vmap(l: int):
+    """Rotation matrix of the spherical harmonics map order l
+
+    Parameters
+    ----------
+    l : int
+        order
+
+    Returns
+    -------
+    Array
+        rotation matrix
+    """
+    # U
+    U = np.zeros((2 * l + 1, 2 * l + 1), dtype=np.complex_)
+    Ud1 = np.ones(2 * l + 1) * 1j
+    Ud1[l + 1 : :] = (-1) ** np.arange(1, l + 1)
+    np.fill_diagonal(U, Ud1)
+    np.fill_diagonal(np.fliplr(U), -1j * Ud1)
+    U[l, l] = np.sqrt(2)
+    U *= 1 / np.sqrt(2)
+    u = jnp.array(U)
+
+    # dlm
+    M, MP = np.indices((2 * l + 1, 2 * l + 1)) - l
+    K = np.arange(0, 2 * l + 2)[:, None, None]
 
     @jax.jit
-    @partial(
-        jnp.vectorize,
-        signature=f"(m),(m),(m)->({U.shape[0]},{U.shape[1]},{U.shape[2]})",
-    )
+    @partial(jnp.vectorize, signature=f"(m),(m),(m)->(m,{U.shape[0]},{U.shape[1]})")
     def _Rl(alpha: Array, beta: Array, gamma: Array):
+        # Add in extra dimension across index matrices and U.
+        m = np.repeat(M[:, :, np.newaxis], alpha.shape[0], axis=2)
+        mp = np.repeat(MP[:, :, np.newaxis], alpha.shape[0], axis=2)
+        k = np.repeat(K[:, :, np.newaxis], alpha.shape[0], axis=3)
+        U = np.repeat(u[np.newaxis, :, :], alpha.shape[0], axis=0)
+
         dlm = (
             jnp.power(-1 + 0j, mp + m)
             * jnp.sqrt(
@@ -210,16 +265,47 @@ def dotR(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
         - M is a matrix (Array)
         - theta is the rotation angle in radians
     """
-    Rls = [Rl(l) for l in range(l_max + 1)]  # -> 3 functions -> sub-matrices
+    Rls = [Rl(l) for l in range(l_max + 1)]
     n_max = l_max**2 + 2 * l_max + 1
 
-    @partial(jnp.vectorize, signature=f"(m,{n_max}),(m)->(m,{n_max})")
-    # @partial(jnp.vectorize, signature=f"({n_max},{n_max}),()->({n_max},{n_max})")
+    @partial(jnp.vectorize, signature=f"(m,{n_max}),()->(m,{n_max})")
     def R(M: Array, theta: Array) -> Array:
         alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
         return np.hstack(
             [
-                # M[:, l**2 : (l + 1) ** 2] @ Rls[l](alpha, beta, gamma)
+                M[:, l**2 : (l + 1) ** 2] @ Rls[l](alpha, beta, gamma)
+                for l in range(l_max + 1)
+            ]
+        )
+
+    return R
+
+
+def dotR_vmap(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
+    """Dot product M@R of a matrix M with the rotation matrix R
+
+    Parameters
+    ----------
+    l_max : int
+        maximum order of the spherical harmonics map
+    u : Array
+        axis-rotation vector
+
+    Returns
+    -------
+    Callable[[Array], Array]
+        a jax.vmap function of (M, theta) returning the product M@R where
+        - M is a matrix (Array)
+        - theta is the rotation angle in radians
+    """
+    Rls = [Rl_vmap(l) for l in range(l_max + 1)]
+    n_max = l_max**2 + 2 * l_max + 1
+
+    @partial(jnp.vectorize, signature=f"(m,{n_max}),(m)->(m,{n_max})")
+    def R(M: Array, theta: Array) -> Array:
+        alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
+        return np.hstack(
+            [
                 vmap(lambda m, r: m @ r, in_axes=(0, 0))(
                     M[:, l**2 : (l + 1) ** 2], Rls[l](alpha, beta, gamma)
                 )
