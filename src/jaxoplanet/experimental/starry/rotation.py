@@ -148,21 +148,15 @@ def Rl_vmap(l: int):
     np.fill_diagonal(np.fliplr(U), -1j * Ud1)
     U[l, l] = np.sqrt(2)
     U *= 1 / np.sqrt(2)
-    u = jnp.array(U)
+    U = jnp.array(U)
 
     # dlm
-    M, MP = np.indices((2 * l + 1, 2 * l + 1)) - l
-    K = np.arange(0, 2 * l + 2)[:, None, None]
+    m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
+    k = np.arange(0, 2 * l + 2)[:, None, None]
 
     @jax.jit
-    @partial(jnp.vectorize, signature=f"(m),(m),(m)->(m,{U.shape[0]},{U.shape[1]})")
+    @partial(jnp.vectorize, signature=f"(),(),()->({U.shape[0]},{U.shape[1]})")
     def _Rl(alpha: Array, beta: Array, gamma: Array):
-        # Add in extra dimension across index matrices and U.
-        m = np.repeat(M[:, :, np.newaxis], alpha.shape[0], axis=2)
-        mp = np.repeat(MP[:, :, np.newaxis], alpha.shape[0], axis=2)
-        k = np.repeat(K[:, :, np.newaxis], alpha.shape[0], axis=3)
-        U = np.repeat(u[np.newaxis, :, :], alpha.shape[0], axis=0)
-
         dlm = (
             jnp.power(-1 + 0j, mp + m)
             * jnp.sqrt(
@@ -187,7 +181,7 @@ def Rl_vmap(l: int):
 
         return jnp.real(jnp.linalg.solve(U, Dlm.T) @ U)
 
-    return _Rl
+    return vmap(_Rl, in_axes=(0, 0, 0))
 
 
 def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
@@ -271,6 +265,7 @@ def dotR(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
     @partial(jnp.vectorize, signature=f"(m,{n_max}),()->(m,{n_max})")
     def R(M: Array, theta: Array) -> Array:
         alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
+
         return np.hstack(
             [
                 M[:, l**2 : (l + 1) ** 2] @ Rls[l](alpha, beta, gamma)
