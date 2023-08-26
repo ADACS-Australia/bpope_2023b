@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-from jaxoplanet.experimental.starry.rotation import dotR, dotR_vmap
+from jaxoplanet.experimental.starry.rotation import dotR
 from jaxoplanet.types import Array
 
 
@@ -24,7 +24,7 @@ def right_project(M: Array, inc: int, obl: int, theta: Array):
     M = M.at[:].set(dotR(l_max, [1.0, 0.0, 0.0])(M, (-0.5 * jnp.pi)))
 
     # # Rotate to the correct phase.
-    M = M.at[:].set(dotR_vmap(l_max, [0.0, 0.0, 1.0])(M, theta))
+    M = M.at[:].set(dotR(l_max, [0.0, 0.0, 1.0])(M, theta))
 
     # Rotate to the polar frame.
     M = M.at[:].set(dotR(l_max, [1.0, 0.0, 0.0])(M, 0.5 * jnp.pi))

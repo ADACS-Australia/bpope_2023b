@@ -155,7 +155,7 @@ def Rl_vmap(l: int):
     k = np.arange(0, 2 * l + 2)[:, None, None]
 
     @jax.jit
-    @partial(jnp.vectorize, signature=f"(),(),()->({U.shape[0]},{U.shape[1]})")
+    # @partial(jnp.vectorize, signature=f"(),(),()->({U.shape[0]},{U.shape[1]})")
     def _Rl(alpha: Array, beta: Array, gamma: Array):
         dlm = (
             jnp.power(-1 + 0j, mp + m)
@@ -241,8 +241,8 @@ def Rdot(l_max: int, u: Array) -> Callable[[Array], Array]:
     return R
 
 
-# def dotR(l_max: int, u: Array) -> Callable[[Array], Array]:
-def dotR(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
+# Works only for scalar thetas.
+def dotR_scalar(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
     """Dot product M@R of a matrix M with the rotation matrix R
 
     Parameters
@@ -276,7 +276,8 @@ def dotR(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
     return R
 
 
-def dotR_vmap(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
+# Works only for Array thetas.
+def dotR_array(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
     """Dot product M@R of a matrix M with the rotation matrix R
 
     Parameters
@@ -307,5 +308,54 @@ def dotR_vmap(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
                 for l in range(l_max + 1)
             ]
         )
+
+    return R
+
+
+# Works for scalar and Array thetas.
+def dotR(l_max: int, u: Array) -> Callable[[Array, Array], Array]:
+    """Dot product M@R of a matrix M with the rotation matrix R
+
+    Parameters
+    ----------
+    l_max : int
+        maximum order of the spherical harmonics map
+    u : Array
+        axis-rotation vector
+
+    Returns
+    -------
+    Callable[[Array, Array], Array]
+        a jax.vmap function of (M, theta) returning the product M@R where
+        - M is a matrix (Array)
+        - theta is the rotation angle in radians
+    """
+    Rls = [Rl(l) for l in range(l_max + 1)]
+    l_max**2 + 2 * l_max + 1
+
+    # @partial(jnp.vectorize, signature=f"(m,{n_max}),(m)->(m,{n_max})")
+    def R(M: Array, theta: Array) -> Array:
+        alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
+
+        # Separate the two cases (theta as scalar or array)
+        if not hasattr(theta, "__len__"):
+            return jnp.concatenate(
+                [
+                    M[:, l**2 : (l + 1) ** 2] @ Rls[l](alpha, beta, gamma)
+                    for l in range(l_max + 1)
+                ],
+                axis=-1,
+            )
+        else:
+            return jnp.concatenate(
+                [
+                    vmap(lambda m, r: m @ r, in_axes=(0, 0))(
+                        M[:, l**2 : (l + 1) ** 2],
+                        vmap(Rls[l], in_axes=(0, 0, 0))(alpha, beta, gamma),
+                    )
+                    for l in range(l_max + 1)
+                ],
+                axis=-1,
+            )
 
     return R
