@@ -5,7 +5,11 @@ import warnings
 import jax
 import numpy as np
 import pytest
-from jaxoplanet.experimental.starry.solution import kappas, solution_vector
+from jaxoplanet.experimental.starry.solution import (
+    kappas,
+    rT_solution_vector,
+    solution_vector,
+)
 from jaxoplanet.test_utils import assert_allclose
 
 
@@ -74,3 +78,16 @@ def test_compare_starry(r, l_max=10, order=20):
             s_expect[:, n],
             err_msg=f"n={n}, l={l}, m={m}, mu={mu}, nu={nu}, case={case}",
         )
+
+
+@pytest.mark.parametrize("lmax", [10, 7, 5, 4, 3, 2, 1, 0])
+def test_compare_starry_rT_solution_vector(lmax):
+    starry = pytest.importorskip("starry")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        m = starry.Map(lmax)
+        s_expect = m.ops.rT.eval()
+    s_calc = rT_solution_vector(lmax)
+
+    assert_allclose(s_expect, s_calc)
