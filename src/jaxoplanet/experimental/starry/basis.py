@@ -32,8 +32,12 @@ def A2_inv(lmax):
             n += 1
     return res
 
-def A():
-    pass
+
+def A(lmax):
+    """Note: as A = A2@A1, similar to A1, multiply the result by 2 / sqrt(pi)
+    to get the code's normalization"""
+    return np.linalg.inv(A2_inv(lmax)) @ A1(lmax)
+
 
 def ptilde(n):
     l = math.floor(math.sqrt(n))
