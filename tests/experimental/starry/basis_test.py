@@ -2,7 +2,7 @@ import warnings
 
 import numpy as np
 import pytest
-from jaxoplanet.experimental.starry.basis import A1, A2_inv
+from jaxoplanet.experimental.starry.basis import A1, A, A2_inv
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5, 4, 3, 2, 1, 0])
@@ -41,6 +41,17 @@ def test_compare_starry_A2_inv(lmax):
         A2 = m.ops.A.eval().toarray() @ m.ops.A1Inv.eval().toarray()
     inv = A2_inv(lmax)
     np.testing.assert_allclose(inv @ A2, np.eye(len(inv)), atol=5e-12)
+
+
+@pytest.mark.parametrize("lmax", [10, 7, 5, 4, 3, 2, 1, 0])
+def test_compare_starry_A(lmax):
+    starry = pytest.importorskip("starry")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        m = starry.Map(lmax)
+        expect = m.ops.A.eval().toarray() * (0.5 * np.sqrt(np.pi))
+    calc = A(lmax)
+    np.testing.assert_allclose(calc, expect, atol=5e-12)
 
 
 def A1_symbolic(lmax):
