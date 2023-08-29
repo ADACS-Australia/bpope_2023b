@@ -1,0 +1,49 @@
+name: Starry Tests
+
+on:
+  # push:
+  #   branches:
+  #     - adacs_starry
+  pull_request:
+    branches:
+      - adacs_starry
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-latest", "macos-latest"]
+        python-version: ["3.9", "3.10", "3.11"]
+        session:
+          - "comparison"
+        # include:
+        #   - os: "ubuntu-latest"
+        #     python-version: "3.10"
+        #     session: "comparison"
+        #   - os: "ubuntu-latest"
+        #     python-version: "3.10"
+        #     session: "test"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          python -m pip install -U nox
+
+      - name: Run tests
+        run: |
+          python -m nox --non-interactive --error-on-missing-interpreter \
+            --session "${{matrix.session}}-${{matrix.python-version}}"
