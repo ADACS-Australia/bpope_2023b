@@ -14,7 +14,7 @@ def test_compare_starry_right_project(l_max):
     obl = 90
     np.random.seed(l_max)
     n_max = l_max**2 + 2 * l_max + 1
-    M = np.random.rand(theta.shape[0], n_max)  # TODO: Create JAX random array.
+    M = np.random.rand(theta.shape[0], n_max)
     M = jnp.array(M)
     m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
     expected = m.right_project(M, inc, obl, theta)

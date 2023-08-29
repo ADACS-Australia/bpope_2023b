@@ -23,7 +23,7 @@ def right_project(M: Array, inc: int, obl: int, theta: Array):
     M = M.at[:].set(dotR(l_max, [0.0, 0.0, 1.0])(M, obl))
     M = M.at[:].set(dotR(l_max, [1.0, 0.0, 0.0])(M, (-0.5 * jnp.pi)))
 
-    # # Rotate to the correct phase.
+    # Rotate to the correct phase.
     M = M.at[:].set(dotR(l_max, [0.0, 0.0, 1.0])(M, theta))
 
     # Rotate to the polar frame.
