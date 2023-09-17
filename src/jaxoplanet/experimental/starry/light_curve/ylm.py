@@ -17,10 +17,11 @@ def light_curve(
     ro: float,
     inc: float,
     obl: float,
+    y: Array,
 ) -> Array:
-    X = X(l_max, theta, xo, yo, zo, ro, inc, obl)
-    y = _get_y(l_max)
-    return X @ y
+    design_matrix = X(l_max, theta, xo, yo, zo, ro, inc, obl)
+    # y = _get_y(l_max)
+    return design_matrix @ y
 
 
 def X(
