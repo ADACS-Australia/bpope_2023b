@@ -13,14 +13,14 @@ from jaxoplanet.types import Array
 @partial(jax.jit, static_argnames=("l_max", "order"))
 def light_curve(
     l_max: int,
+    inc: float,
+    obl: float,
+    y: Array,
     xo: Array,
     yo: Array,
     zo: Array,
     ro: Array,
-    inc: float,
-    obl: float,
     theta: Array,
-    y: Array,
     order=10,
 ) -> Array:
     b = jnp.sqrt(xo**2 + yo**2)

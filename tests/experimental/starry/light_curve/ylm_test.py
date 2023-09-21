@@ -32,6 +32,6 @@ def test_compare_starry_light_curve(l_max):
             0.5 * np.sqrt(np.pi)
         )
 
-    calc = light_curve(l_max, xo, yo, zo, ro, inc, obl, theta, y)
+    calc = light_curve(l_max, inc, obl, y, xo, yo, zo, ro, theta)
 
     assert_allclose(calc, expect)
