@@ -31,18 +31,14 @@ def light_curve(
     cond_rot_ = cond_rot[:, jnp.newaxis]
 
     sT = solution_vector(l_max, order=order)(b, ro)
-
-    # applying occultation mask
-    sT_ = jnp.where(cond_rot_, sT, 0.0)
-    sTA = sT_ @ A(l_max)
-
+    sTA = sT @ A(l_max)
     sTAR = dotR(l_max, [0, 0, 1])(sTA, theta_z)
 
     # rotational phase
     rTA1 = rT_solution_vector(l_max) @ A1(l_max)
     rTA1_ = jnp.broadcast_to(rTA1, sTAR.shape)
 
-    # combine solution vectors
+    # applying occultation mask
     sTAR_ = jnp.where(~cond_rot_, sTAR, rTA1_)
 
     # get the design matrix
