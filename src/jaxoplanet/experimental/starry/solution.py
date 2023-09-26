@@ -1,7 +1,6 @@
 from functools import partial
 from typing import Callable, Tuple
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.special import gamma, roots_legendre
@@ -13,7 +12,7 @@ from jaxoplanet.types import Array
 def solution_vector(l_max: int, order: int = 20) -> Callable[[Array, Array], Array]:
     n_max = l_max**2 + 2 * l_max + 1
 
-    @jax.jit
+    # @jax.jit
     @partial(jnp.vectorize, signature=f"(),()->({n_max})")
     def impl(b: Array, r: Array) -> Array:
         b = jnp.abs(b)
@@ -148,75 +147,35 @@ def p_integral(order: int, l_max: int, b: Array, r: Array, kappa0: Array) -> Arr
     return P.at[inds].set(P0)
 
 
-# def rT_solution_vector(l_max: int) -> Array:
-#     "rotational phase solution vector"
-#     n_max = (l_max + 1) ** 2
-
-#     rT = np.zeros([1, n_max])
-
-#     idx = 0
-#     for l in range(l_max + 1):
-#         for j in range(2 * l + 1):
-#             m = j - l
-#             mu = l - m
-#             nu = l + m
-#             if mu * 0.5 % 2 == 0 and nu * 0.5 % 2 == 0:
-#                 r = gamma(mu / 4 + 0.5) * gamma(nu / 4 + 0.5)
-#                       / gamma((mu + nu) / 4 + 2)
-#             elif (mu - 1) * 0.5 % 2 == 0 and (nu - 1) * 0.5 % 2 == 0:
-#                 r = (
-#                     0.5
-#                     * np.sqrt(np.pi)
-#                     * gamma(mu / 4 + 0.25)
-#                     * gamma(nu / 4 + 0.25)
-#                     / gamma((mu + nu) / 4 + 2)
-#                 )
-#             else:
-#                 r = 0
-
-#             rT[0][idx] = r
-#             idx = idx + 1
-
-#     return rT
-
-
 def rT_solution_vector(l_max: int) -> Array:
     n_max = (l_max + 1) ** 2
 
-    @jax.jit
-    def impl() -> Array:
-        rT = jnp.zeros((1, n_max), dtype=jnp.float32)
+    rT = jnp.zeros((n_max))
 
-        idx = 0
-        for l in range(l_max + 1):
-            for j in range(2 * l + 1):
-                m = j - l
-                mu = l - m
-                nu = l + m
+    idx = 0
+    for l in range(l_max + 1):
+        for j in range(2 * l + 1):
+            m = j - l
+            mu = l - m
+            nu = l + m
 
-                condition1 = (mu * 0.5 % 2 == 0) and (nu * 0.5 % 2 == 0)
-                condition2 = ((mu - 1) * 0.5 % 2 == 0) and ((nu - 1) * 0.5 % 2 == 0)
+            condition1 = (mu * 0.5 % 2 == 0) and (nu * 0.5 % 2 == 0)
+            condition2 = ((mu - 1) * 0.5 % 2 == 0) and ((nu - 1) * 0.5 % 2 == 0)
 
-                r = 0.0  # Default value
+            r = 0.0  # Default value
 
-                if condition1:
-                    r = (
-                        gamma(mu / 4 + 0.5)
-                        * gamma(nu / 4 + 0.5)
-                        / gamma((mu + nu) / 4 + 2)
-                    )
-                elif condition2:
-                    r = (
-                        0.5
-                        * jnp.sqrt(jnp.pi)
-                        * gamma(mu / 4 + 0.25)
-                        * gamma(nu / 4 + 0.25)
-                        / gamma((mu + nu) / 4 + 2)
-                    )
+            if condition1:
+                r = gamma(mu / 4 + 0.5) * gamma(nu / 4 + 0.5) / gamma((mu + nu) / 4 + 2)
+            elif condition2:
+                r = (
+                    0.5
+                    * jnp.sqrt(jnp.pi)
+                    * gamma(mu / 4 + 0.25)
+                    * gamma(nu / 4 + 0.25)
+                    / gamma((mu + nu) / 4 + 2)
+                )
 
-                rT = rT.at[0, idx].set(r)
-                idx += 1
+            rT = rT.at[idx].set(r)
+            idx += 1
 
-        return rT
-
-    return impl()
+    return rT
