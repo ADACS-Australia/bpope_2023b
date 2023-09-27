@@ -102,6 +102,5 @@ select = ["F", "I", "E", "W", "YTT", "B", "Q", "PLE", "PLW"]
 ignore = [
     "E741", # Allow ambiguous variable names (e.g. "l" in starry)
     "B023", # Allow using global variables in lambdas
-    "F823", # Allow referencing local functions before assignment
 ]
 exclude = []
