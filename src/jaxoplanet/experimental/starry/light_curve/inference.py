@@ -1,6 +1,5 @@
 import jax
 import jax.numpy as jnp
-import numpy as np
 from jax import config
 
 config.update("jax_enable_x64", True)
@@ -199,11 +198,11 @@ def set_prior(lmax, mu=None, L=None, cho_L=None):
     Ny = (lmax + 1) * (lmax + 1)
 
     if mu is None:
-        mu = np.zeros(Ny)
+        mu = jnp.zeros(Ny)
         mu[0] = 1.0
         mu = cast(mu)
 
-    _mu = cast(mu) * cast(np.ones(Ny))
+    _mu = cast(mu) * cast(jnp.ones(Ny))
     _L = get_covariance(C=L, cho_C=cho_L, N=Ny)
 
     return _mu, _L
