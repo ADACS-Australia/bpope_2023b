@@ -8,15 +8,49 @@ config.update("jax_enable_x64", True)
 
 """
 
-TESTED against starry results:
+Notes
+-----
 
-    set_data(flux, C=sigma ** 2)
-    -> get_covariance()
-    -> cast()
-    -> cho_solve()
+    - Currently, solve() and lnlike() accept the parameter "bodies",
+      which is a list of starry.Primary and starry.Secondary objects.
 
-    set_prior(lmax=5, mu=pri_mu, L=pri_L)
-    -> same as above
+
+Cases tested against starry
+---------------------------
+
+set_data(flux, C=None, cho_C=None)
+
+    - tested with C as a scalar, vector
+    - NOT tested with C as a matrix
+    - NOT tested with cho_C
+
+set_prior(lmax, mu, L)
+
+    - tested 3x different lmax
+    - tested mu as default, scalar, vector
+    - tested L as scalar, vector
+    - NOT tested L as matrix
+
+solve(lmax, flux, C, bodies, design_matrix=None, t=None)
+
+    - tested 3x different lmax
+    - tested with design_matrix
+    - NOT tested with t (NOT YET implemented)
+
+lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True)
+
+    - tested 3x different lmax
+    - tested with design_matrix
+    - NOT tested with t (NOT YET implemented)
+    - tested woodbury as [True, False]
+
+
+STILL TO DO
+-----------
+
+    check if jax has any functions we can use
+    jit/partial jit functions
+    add signatures
 
 """
 
@@ -146,6 +180,7 @@ def set_prior(lmax, mu=None, L=None, cho_L=None):
     harmonic is always unity.
 
     Args:
+        lmax (scalar): The maximum degree of spherical harmonic coefficients.
         mu (scalar or vector): The prior mean on the amplitude-weighted
             spherical harmonic coefficients. Default is `1.0` for the
             first term and zero for the remaining terms. If this is a vector,
@@ -235,6 +270,11 @@ def solve(lmax, flux, C, bodies, design_matrix=None, t=None):
     maximum a posteriori (MAP) solution.
 
     Args:
+        lmax (scalar): The maximum degree of spherical harmonic coefficients.
+        flux (array): The flux timeseries.
+        C (tuple): A container of covariance matrices (value, cholesky,
+            inverse, lndet, kind, N).
+        bodies (list): The bodies of the system.
         design_matrix (matrix, optional): The flux design matrix, the
             quantity returned by :py:meth:`design_matrix`. Default is
             None, in which case this is computed based on ``kwargs``.
@@ -258,7 +298,8 @@ def solve(lmax, flux, C, bodies, design_matrix=None, t=None):
 
     # Get the full design matrix
     if design_matrix is None:
-        assert t is not None, "Please provide a time vector `t`."
+        raise ValueError("Design matrix construction not yet implemented.")
+        # assert t is not None, "Please provide a time vector `t`."
         # design_matrix = design_matrix(t)
     X = cast(design_matrix)
 
@@ -319,3 +360,221 @@ def solve(lmax, flux, C, bodies, design_matrix=None, t=None):
 
     # Return the mean and covariance
     return (x, cho_cov)
+
+
+def get_lnlike(X, flux, C, mu, L):
+    """
+    Compute the log marginal likelihood of the data given a design matrix.
+
+    Args:
+        X (matrix): The flux design matrix.
+        flux (array): The flux timeseries.
+        C (scalar/vector/matrix): The data covariance matrix.
+        mu (array): The prior mean of the spherical harmonic coefficients.
+        L (scalar/vector/matrix): The prior covariance of the spherical
+            harmonic coefficients.
+
+    Returns:
+        The log marginal likelihood of the `flux` vector conditioned on
+        the design matrix `X`. This is the likelihood marginalized over
+        all possible spherical harmonic vectors, which is analytically
+        computable for the linear `starry` model.
+
+    """
+    # Compute the GP mean
+    gp_mu = jnp.dot(X, mu)
+
+    # Compute the GP covariance
+    if L.ndim == 0:
+        XLX = jnp.dot(X, jnp.transpose(X)) * L
+    elif L.ndim == 1:
+        XLX = jnp.dot(jnp.dot(X, jnp.diag(L)), jnp.transpose(X))
+    else:
+        XLX = jnp.dot(jnp.dot(X, L), jnp.transpose(X))
+    # If C is a scalar or a 1-dimensional array, increment the
+    # diagonal elements of XLX with the values from C.
+    if C.ndim == 0 or C.ndim == 1:
+        gp_cov = XLX.at[jnp.diag_indices_from(XLX)].set(
+            XLX[jnp.diag_indices_from(XLX)] + C
+        )
+    # If C is a matrix, directly add C to XLX.
+    else:
+        gp_cov = C + XLX
+
+    cho_gp_cov = jax.scipy.linalg.cholesky(gp_cov, lower=True)
+
+    # Compute the marginal likelihood
+    N = X.shape[0]
+    r = jnp.reshape(flux - gp_mu, (-1, 1))
+    lnlike = -0.5 * jnp.dot(jnp.transpose(r), cho_solve(cho_gp_cov, r))
+    lnlike -= jnp.sum(jnp.log(jnp.diag(cho_gp_cov)))
+    lnlike -= 0.5 * N * jnp.log(2 * jnp.pi)
+
+    return lnlike[0, 0]
+
+
+def get_lnlike_woodbury(X, flux, CInv, mu, LInv, lndetC, lndetL):
+    """
+    Compute the log marginal likelihood of the data given a design matrix
+    using the Woodbury identity.
+
+    Args:
+        X (matrix): The flux design matrix.
+        flux (array): The flux timeseries.
+        CInv (scalar/vector/matrix): The inverse data covariance matrix.
+        mu (array): The prior mean of the spherical harmonic coefficients.
+        L (scalar/vector/matrix): The inverse prior covariance of the
+            spherical harmonic coefficients.
+
+    Returns:
+        The log marginal likelihood of the `flux` vector conditioned on
+        the design matrix `X`. This is the likelihood marginalized over
+        all possible spherical harmonic vectors, which is analytically
+        computable for the linear `starry` model.
+
+    """
+    # Compute the GP mean
+    gp_mu = jnp.dot(X, mu)
+
+    # Residual vector
+    r = jnp.reshape(flux - gp_mu, (-1, 1))
+
+    # Inverse of GP covariance via Woodbury identity
+    if CInv.ndim == 0:
+        U = X * CInv
+    elif CInv.ndim == 1:
+        U = jnp.dot(jnp.diag(CInv), X)
+    else:
+        U = jnp.dot(CInv, X)
+
+    if LInv.ndim == 0:
+        W = jnp.dot(jnp.transpose(X), U) + LInv * jnp.eye(U.shape[1])
+    elif LInv.ndim == 1:
+        W = jnp.dot(jnp.transpose(X), U) + jnp.diag(LInv)
+    else:
+        W = jnp.dot(jnp.transpose(X), U) + LInv
+    cho_W = jax.scipy.linalg.cholesky(W, lower=True)
+
+    if CInv.ndim == 0:
+        SInv = CInv * jnp.eye(U.shape[0]) - jnp.dot(
+            U, cho_solve(cho_W, jnp.transpose(U))
+        )
+    elif CInv.ndim == 1:
+        SInv = jnp.diag(CInv) - jnp.dot(U, cho_solve(cho_W, jnp.transpose(U)))
+    else:
+        SInv = CInv - jnp.dot(U, cho_solve(cho_W, jnp.transpose(U)))
+
+    # Determinant of GP covariance
+    lndetW = 2 * jnp.sum(jnp.log(jnp.diag(cho_W)))
+    lndetS = lndetW + lndetC + lndetL
+
+    # Compute the marginal likelihood
+    N = X.shape[0]
+    lnlike = -0.5 * jnp.dot(jnp.transpose(r), jnp.dot(SInv, r))
+    lnlike -= 0.5 * lndetS
+    lnlike -= 0.5 * N * jnp.log(2 * jnp.pi)
+
+    return lnlike[0, 0]
+
+
+def lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True):
+    """Returns the log marginal likelihood of the data given a design matrix.
+
+    This method computes the marginal likelihood (marginalized over the
+    spherical harmonic coefficients of all bodies) given a system
+    light curve and its covariance (set via the :py:meth:`set_data` method)
+    and a Gaussian prior on the spherical harmonic coefficients
+    (set via the :py:meth:`set_prior` method).
+
+    Args:
+        lmax (scalar): The maximum degree of spherical harmonic coefficients.
+        flux (array): The flux timeseries.
+        C (tuple): A container of covariance matrices (value, cholesky,
+            inverse, lndet, kind, N).
+        bodies (list): The bodies of the system.
+        design_matrix (matrix, optional): The flux design matrix, the
+            quantity returned by :py:meth:`design_matrix`. Default is
+            None, in which case this is computed based on ``kwargs``.
+        t (vector, optional): The vector of times at which to evaluate
+            :py:meth:`design_matrix`, if a design matrix is not provided.
+            Default is None.
+        woodbury (bool, optional): Solve the linear problem using the
+            Woodbury identity? Default is True. The
+            `Woodbury identity <https://en.wikipedia.org/wiki/Woodbury_matrix_identity>`_
+            is used to speed up matrix operations in the case that the
+            number of data points is much larger than the number of
+            spherical harmonic coefficients. In this limit, it can
+            speed up the code by more than an order of magnitude. Keep
+            in mind that the numerical stability of the Woodbury identity
+            is not great, so if you're getting strange results try
+            disabling this. It's also a good idea to disable this in the
+            limit of few data points and large spherical harmonic degree.
+
+    Returns:
+        lnlike: The log marginal likelihood.
+    """
+
+    Ny = (lmax + 1) * (lmax + 1)
+
+    # Get the full design matrix
+    if design_matrix is None:
+        raise ValueError("Design matrix construction not yet implemented.")
+        # assert t is not None, "Please provide a time vector `t`."
+        # design_matrix = design_matrix(t)
+    X = cast(design_matrix)
+
+    # Get the data vector
+    f = cast(flux)
+
+    # Check for bodies whose priors are set
+    solved_bodies = []
+    inds = []
+    dense_L = False
+    for k, body in enumerate(bodies):
+        # If no priors have been set on this body
+        if body.map._mu is None or body.map._L is None:
+            # Subtract out this term from the data vector,
+            # since it is fixed
+            f -= body.map.amp * jnp.dot(X[:, jnp.arange(Ny) + Ny * k], body.map.y)
+
+        else:
+            # Add to our list of indices/bodies to solve for
+            inds.extend(jnp.arange(Ny) + Ny * k)
+            solved_bodies.append(body)
+            if body.map._L.kind in ["matrix", "cholesky"]:
+                dense_L = True
+
+    # Do we have at least one body?
+    if len(solved_bodies) == 0:
+        raise ValueError("Please provide a prior for at least one body.")
+
+    # Keep only the terms we'll solve for
+    X = X[:, inds]
+
+    # Stack our priors
+    mu = jnp.concatenate([body.map._mu for body in solved_bodies])
+
+    # Compute the likelihood
+    if woodbury:
+        if not dense_L:
+            # We can just concatenate vectors
+            LInv = jnp.concatenate(
+                [body.map._L.inverse * jnp.ones(body.map.Ny) for body in solved_bodies]
+            )
+        else:
+            LInv = jnp.block_diag(
+                *[body.map._L.inverse * jnp.eye(body.map.Ny) for body in solved_bodies]
+            )
+        lndetL = cast([body.map._L.lndet for body in solved_bodies])
+        return get_lnlike_woodbury(X, f, C[2], mu, LInv, C[3], lndetL)
+    else:
+        if not dense_L:
+            # We can just concatenate vectors
+            L = jnp.concatenate(
+                [body.map._L.value * jnp.ones(body.map.Ny) for body in solved_bodies]
+            )
+        else:
+            L = jnp.block_diag(
+                *[body.map._L.value * jnp.eye(body.map.Ny) for body in solved_bodies]
+            )
+        return get_lnlike(X, f, C[0], mu, L)

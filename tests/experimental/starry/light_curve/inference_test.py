@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 import pytest
 from jaxoplanet.experimental.starry.light_curve.inference import (
+    lnlike,
     set_data,
     set_prior,
     solve,
@@ -10,43 +11,27 @@ from jaxoplanet.experimental.starry.light_curve.inference import (
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])
-def test_compare_starry_set_data(lmax):
+@pytest.mark.parametrize("C", [2.5e-07, "vector"])
+def test_compare_starry_set_data(lmax, C):
     starry = pytest.importorskip("starry")
+    Ny = (lmax + 1) * (lmax + 1)
+
+    if C == "vector":
+        np.random.seed(12)
+        C = np.random.default_rng().uniform(low=1e-9, high=1e-6, size=Ny)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         starry.config.lazy = False
         starry.config.quiet = True
-        map = starry.Map(ydeg=lmax)
-        map.add_spot(amp=-0.075, sigma=0.1, lat=0, lon=-30)
-        A_y = np.array(map.y[1:])
-        map.reset()
-        map.add_spot(amp=-0.075, sigma=0.1, lat=-30, lon=60)
-        B_y = np.array(map.y[1:])
-        pri = starry.Primary(
-            starry.Map(ydeg=lmax, udeg=2, inc=80.0, amp=1.0),
-            r=1.0,
-            m=1.0,
-            prot=1.25,
-        )
-        pri.map[1:] = [0.40, 0.25]
-        pri.map[1:, :] = A_y
-        sec = starry.Secondary(
-            starry.Map(ydeg=lmax, udeg=2, inc=80.0, amp=0.1),
-            r=0.7,
-            m=0.7,
-            porb=1.00,
-            prot=0.625,
-            t0=0.15,
-            inc=80.0,
-        )
-        sec.map[1:] = [0.20, 0.05]
-        sec.map[1:, :] = B_y
+
+        pri = starry.Primary(starry.Map(ydeg=lmax))
+        sec = starry.Secondary(starry.Map(ydeg=lmax), porb=1.00)
         sys = starry.System(pri, sec)
         t = np.linspace(-2.5, 2.5, 1000)
-        flux_true = sys.flux(t)
-        sigma = 0.0005
-        flux = flux_true + sigma * np.random.randn(len(t))
-        sys.set_data(flux, C=sigma**2)
+        flux = sys.flux(t)
+
+        sys.set_data(flux, C=C)
         expect_flux = sys._flux
         expect_C = (
             sys._C.value,
@@ -56,7 +41,9 @@ def test_compare_starry_set_data(lmax):
             sys._C.kind,
             sys._C.N,
         )
-    (calc_flux, calc_C) = set_data(flux, C=sigma**2)
+
+    (calc_flux, calc_C) = set_data(flux, C=C)
+
     np.testing.assert_allclose(calc_flux, expect_flux, atol=1e-12)  # flux
     np.testing.assert_allclose(calc_C[0], expect_C[0], atol=1e-12)  # value
     np.testing.assert_allclose(calc_C[1], expect_C[1], atol=1e-12)  # cholesky
@@ -67,49 +54,30 @@ def test_compare_starry_set_data(lmax):
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])
-def test_compare_starry_set_prior(lmax):
+@pytest.mark.parametrize("pri_mu", [None, 0.1, "vector"])
+@pytest.mark.parametrize("pri_L", [1e-2, "vector"])
+def test_compare_starry_set_prior(lmax, pri_mu, pri_L):
     starry = pytest.importorskip("starry")
+    Ny = (lmax + 1) * (lmax + 1)
+
+    if pri_mu == "vector":
+        np.random.seed(12)
+        pri_mu = np.random.default_rng().uniform(low=0.0, high=0.3, size=Ny)
+        pri_mu[0] = 1.0
+
+    if pri_L == "vector":
+        pri_L = np.tile(1e-2, Ny)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         starry.config.lazy = False
         starry.config.quiet = True
-        map = starry.Map(ydeg=lmax)
-        map.add_spot(amp=-0.075, sigma=0.1, lat=0, lon=-30)
-        A_y = np.array(map.y[1:])
-        map.reset()
-        map.add_spot(amp=-0.075, sigma=0.1, lat=-30, lon=60)
-        B_y = np.array(map.y[1:])
-        pri = starry.Primary(
-            starry.Map(ydeg=lmax, udeg=2, inc=80.0, amp=1.0),
-            r=1.0,
-            m=1.0,
-            prot=1.25,
-        )
-        pri.map[1:] = [0.40, 0.25]
-        pri.map[1:, :] = A_y
-        sec = starry.Secondary(
-            starry.Map(ydeg=lmax, udeg=2, inc=80.0, amp=0.1),
-            r=0.7,
-            m=0.7,
-            porb=1.00,
-            prot=0.625,
-            t0=0.15,
-            inc=80.0,
-        )
-        sec.map[1:] = [0.20, 0.05]
-        sec.map[1:, :] = B_y
-        sys = starry.System(pri, sec)
-        t = np.linspace(-2.5, 2.5, 1000)
-        flux_true = sys.flux(t)
-        sigma = 0.0005
-        flux = flux_true + sigma * np.random.randn(len(t))
-        sys.set_data(flux, C=sigma**2)
-        pri_mu = np.zeros(pri.map.Ny)
-        pri_mu[0] = 1.0
-        pri_L = np.zeros(pri.map.Ny)
-        pri_L[0] = 1e-2
-        pri_L[1:] = 1e-2
+        pri = starry.Primary(starry.Map(ydeg=lmax))
+        sec = starry.Secondary(starry.Map(ydeg=lmax), porb=1.00)
+        starry.System(pri, sec)
+
         pri.map.set_prior(mu=pri_mu, L=pri_L)
+        expect_mu = pri.map._mu
         expect_L = (
             pri.map._L.value,
             pri.map._L.cholesky,
@@ -118,8 +86,9 @@ def test_compare_starry_set_prior(lmax):
             pri.map._L.kind,
             pri.map._L.N,
         )
-        expect_mu = pri.map._mu
+
     (calc_mu, calc_L) = set_prior(lmax, mu=pri_mu, L=pri_L)
+
     np.testing.assert_allclose(calc_mu, expect_mu, atol=1e-12)  # mu
     np.testing.assert_allclose(calc_L[0], expect_L[0], atol=1e-12)  # value
     np.testing.assert_allclose(calc_L[1], expect_L[1], atol=1e-12)  # cholesky
@@ -132,42 +101,25 @@ def test_compare_starry_set_prior(lmax):
 @pytest.mark.parametrize("lmax", [10, 7, 5])
 def test_compare_starry_solve(lmax):
     starry = pytest.importorskip("starry")
+    Ny = (lmax + 1) * (lmax + 1)
+    pri_mu = None
+    pri_L = np.tile(1e-2, Ny)
+    C = 2.5e-07
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         starry.config.lazy = False
         starry.config.quiet = True
-        map = starry.Map(ydeg=lmax)
-        map.add_spot(amp=-0.075, sigma=0.1, lat=0, lon=-30)
-        A_y = np.array(map.y[1:])
-        map.reset()
-        map.add_spot(amp=-0.075, sigma=0.1, lat=-30, lon=60)
-        B_y = np.array(map.y[1:])
-        pri = starry.Primary(
-            starry.Map(ydeg=lmax, udeg=2, inc=80.0, amp=1.0),
-            r=1.0,
-            m=1.0,
-            prot=1.25,
-        )
-        pri.map[1:] = [0.40, 0.25]
-        pri.map[1:, :] = A_y
-        sec = starry.Secondary(
-            starry.Map(ydeg=lmax, udeg=2, inc=80.0, amp=0.1),
-            r=0.7,
-            m=0.7,
-            porb=1.00,
-            prot=0.625,
-            t0=0.15,
-            inc=80.0,
-        )
-        sec.map[1:] = [0.20, 0.05]
-        sec.map[1:, :] = B_y
+
+        pri = starry.Primary(starry.Map(ydeg=lmax))
+        sec = starry.Secondary(starry.Map(ydeg=lmax), porb=1.00)
         sys = starry.System(pri, sec)
+
+        pri.map.set_prior(mu=pri_mu, L=pri_L)
+
         t = np.linspace(-2.5, 2.5, 1000)
-        flux_true = sys.flux(t)
-        sigma = 0.0005
-        flux = flux_true + sigma * np.random.randn(len(t))
-        sys.set_data(flux, C=sigma**2)
-        expect_flux = sys._flux
+        flux = sys.flux(t)
+        sys.set_data(flux, C=C)
         expect_C = (
             sys._C.value,
             sys._C.cholesky,
@@ -176,17 +128,58 @@ def test_compare_starry_solve(lmax):
             sys._C.kind,
             sys._C.N,
         )
-        pri_mu = np.zeros(pri.map.Ny)
-        pri_mu[0] = 1.0
-        pri_L = np.zeros(pri.map.Ny)
-        pri_L[0] = 1e-2
-        pri_L[1:] = 1e-2
-        pri.map.set_prior(mu=pri_mu, L=pri_L)
+
         (expect_x, expect_cho_cov) = sys.solve(t=t)
         design_matrix = sys.design_matrix(t=t)
-        bodies = [pri, sec]
+
+    bodies = [pri, sec]
     (calc_x, calc_cho_cov) = solve(
-        lmax, expect_flux, expect_C, bodies, design_matrix=design_matrix
+        lmax, flux, expect_C, bodies, design_matrix=design_matrix
     )
+
     np.testing.assert_allclose(calc_x, expect_x, atol=1e-8)
     np.testing.assert_allclose(calc_cho_cov, expect_cho_cov, atol=1e-10)
+
+
+@pytest.mark.parametrize("lmax", [10, 7, 5])
+@pytest.mark.parametrize("woodbury", [True, False])
+def test_compare_starry_lnlike(lmax, woodbury):
+    starry = pytest.importorskip("starry")
+    Ny = (lmax + 1) * (lmax + 1)
+    pri_mu = None
+    pri_L = np.tile(1e-2, Ny)
+    C = 2.5e-07
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        starry.config.lazy = False
+        starry.config.quiet = True
+
+        pri = starry.Primary(starry.Map(ydeg=lmax))
+        sec = starry.Secondary(starry.Map(ydeg=lmax), porb=1.00)
+        sys = starry.System(pri, sec)
+
+        t = np.linspace(-2.5, 2.5, 1000)
+        flux = sys.flux(t)
+        sys.set_data(flux, C=C)
+        expect_C = (
+            sys._C.value,
+            sys._C.cholesky,
+            sys._C.inverse,
+            sys._C.lndet,
+            sys._C.kind,
+            sys._C.N,
+        )
+
+        pri.map.set_prior(mu=pri_mu, L=pri_L)
+
+        expect_ln = sys.lnlike(t=t, woodbury=woodbury)
+
+        design_matrix = sys.design_matrix(t=t)
+
+    bodies = [pri, sec]
+    calc_ln = lnlike(
+        lmax, flux, expect_C, bodies, design_matrix=design_matrix, woodbury=woodbury
+    )
+
+    np.testing.assert_allclose(calc_ln, expect_ln, atol=1e-12)
