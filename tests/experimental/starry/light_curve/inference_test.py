@@ -9,6 +9,37 @@ from jaxoplanet.experimental.starry.light_curve.inference import (
     solve,
 )
 
+"""
+Cases tested against starry
+---------------------------
+
+set_data(flux, C=None, cho_C=None)
+
+    - tested with C as a scalar, vector
+    - NOT tested with C as a matrix
+    - NOT tested with cho_C
+
+set_prior(lmax, mu, L)
+
+    - tested 3x different lmax
+    - tested mu as default, scalar, vector
+    - tested L as scalar, vector
+    - NOT tested L as a matrix
+
+solve(lmax, flux, C, bodies, design_matrix=None, t=None)
+
+    - tested 3x different lmax
+    - tested with design_matrix
+    - NOT tested with t (NOT YET implemented)
+
+lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True)
+
+    - tested 3x different lmax
+    - tested with design_matrix
+    - NOT tested with t (NOT YET implemented)
+    - tested woodbury as [True, False]
+"""
+
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])
 @pytest.mark.parametrize("C", [2.5e-07, "vector"])
@@ -130,6 +161,7 @@ def test_compare_starry_solve(lmax):
         )
 
         (expect_x, expect_cho_cov) = sys.solve(t=t)
+
         design_matrix = sys.design_matrix(t=t)
 
     bodies = [pri, sec]

@@ -11,40 +11,13 @@ Notes
 -----
 
     - Currently, solve() and lnlike() accept the parameter "bodies",
-      which is a list of starry.Primary and starry.Secondary objects.
+      which is a list of starry.Primary- and starry.Secondary-like objects.
+    - solve() and lnlike() can't yet accept a time series as input over a
+      design matrix, since jaxoplanet does not currently have a function
+      for constructing a design matrix.
 
 
-Cases tested against starry
----------------------------
-
-set_data(flux, C=None, cho_C=None)
-
-    - tested with C as a scalar, vector
-    - NOT tested with C as a matrix
-    - NOT tested with cho_C
-
-set_prior(lmax, mu, L)
-
-    - tested 3x different lmax
-    - tested mu as default, scalar, vector
-    - tested L as scalar, vector
-    - NOT tested L as matrix
-
-solve(lmax, flux, C, bodies, design_matrix=None, t=None)
-
-    - tested 3x different lmax
-    - tested with design_matrix
-    - NOT tested with t (NOT YET implemented)
-
-lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True)
-
-    - tested 3x different lmax
-    - tested with design_matrix
-    - NOT tested with t (NOT YET implemented)
-    - tested woodbury as [True, False]
-
-
-STILL TO DO
+Still to do
 -----------
 
     check if jax has any functions we can use
