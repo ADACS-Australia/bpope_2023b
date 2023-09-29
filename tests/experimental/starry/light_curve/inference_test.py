@@ -41,6 +41,9 @@ lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True)
 """
 
 
+# TODO: test_compare_starry_design_matrix*()
+
+
 @pytest.mark.parametrize("lmax", [10, 7, 5])
 @pytest.mark.parametrize("C", [2.5e-07, "vector"])
 def test_compare_starry_set_data(lmax, C):
