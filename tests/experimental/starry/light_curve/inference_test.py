@@ -164,13 +164,38 @@ def test_compare_starry_solve(lmax):
 
         design_matrix = sys.design_matrix(t=t)
 
-    bodies = [pri, sec]
+    pri_L = dict(
+        value=pri.map._L.value,
+        cholesky=pri.map._L.cholesky,
+        inverse=pri.map._L.inverse,
+        lndet=pri.map._L.lndet,
+        N=pri.map._L.N,
+        kind=pri.map._L.kind,
+    )
+    pri_body = dict(
+        mu=pri.map._mu,
+        L=pri_L,
+        amp=pri.map.amp,
+        y=pri.map.y,
+        n_max=pri.map.Ny,
+        l_max=pri.map.ydeg,
+    )
+    sec_body = dict(
+        mu=sec.map._mu,
+        L=None,
+        amp=sec.map.amp,
+        y=sec.map.y,
+        n_max=sec.map.Ny,
+        l_max=sec.map.ydeg,
+    )
+    bodies = [pri_body, sec_body]
+
     (calc_x, calc_cho_cov) = solve(
         lmax, flux, expect_C, bodies, design_matrix=design_matrix
     )
 
-    np.testing.assert_allclose(calc_x, expect_x, atol=1e-8)
-    np.testing.assert_allclose(calc_cho_cov, expect_cho_cov, atol=1e-10)
+    np.testing.assert_allclose(calc_x, expect_x, atol=1e-9)
+    np.testing.assert_allclose(calc_cho_cov, expect_cho_cov, atol=1e-11)
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])
@@ -209,7 +234,22 @@ def test_compare_starry_lnlike(lmax, woodbury):
 
         design_matrix = sys.design_matrix(t=t)
 
-    bodies = [pri, sec]
+    pri_L = dict(
+        value=pri.map._L.value,
+        cholesky=pri.map._L.cholesky,
+        inverse=pri.map._L.inverse,
+        lndet=pri.map._L.lndet,
+        N=pri.map._L.N,
+        kind=pri.map._L.kind,
+    )
+    pri_body = dict(
+        mu=pri.map._mu, L=pri_L, amp=pri.map.amp, y=pri.map.y, n_max=pri.map.Ny
+    )
+    sec_body = dict(
+        mu=sec.map._mu, L=None, amp=sec.map.amp, y=sec.map.y, n_max=sec.map.Ny
+    )
+    bodies = [pri_body, sec_body]
+
     calc_ln = lnlike(
         lmax, flux, expect_C, bodies, design_matrix=design_matrix, woodbury=woodbury
     )

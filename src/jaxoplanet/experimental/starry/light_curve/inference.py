@@ -1,6 +1,10 @@
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
 from jax import config
+
+from jaxoplanet.types import Array
 
 config.update("jax_enable_x64", True)
 
@@ -23,6 +27,8 @@ Still to do
     check if jax has any functions we can use
     jit/partial jit functions
     add signatures
+    add input types
+    construct an 'eclipsing binary' file from these functions.
 
 """
 
@@ -34,12 +40,14 @@ def cast(*args):
         return [jnp.asarray(arg, dtype="float64") for arg in args]
 
 
-def cho_solve(A, b):
+def cho_solve(A: Array, b: Array) -> Array:
     b_ = jax.scipy.linalg.solve_triangular(A, b, lower=True)
     return jax.scipy.linalg.solve_triangular(jnp.transpose(A), b_, lower=False)
 
 
-def get_covariance(C=None, cho_C=None, N=None):
+def get_covariance(
+    C: float | Array = None, cho_C: float | Array = None, N: int = None
+) -> Tuple[Array, Array, Array, Array, str, int]:
     """A container for covariance matrices.
 
     Args:
@@ -106,7 +114,9 @@ def get_covariance(C=None, cho_C=None, N=None):
     return value, cholesky, inverse, lndet, kind, N
 
 
-def set_data(flux, C=None, cho_C=None):
+def set_data(
+    flux: Array, C: float | Array = None, cho_C: float | Array = None
+) -> Tuple[Array, tuple]:
     """Set the data vector and covariance matrix.
 
     This method is required by the :py:meth:`solve` method, which
@@ -132,7 +142,12 @@ def set_data(flux, C=None, cho_C=None):
     return flux, C
 
 
-def set_prior(lmax, mu=None, L=None, cho_L=None):
+def set_prior(
+    lmax: int,
+    mu: float | Array = None,
+    L: float | Array = None,
+    cho_L: float | Array = None,
+) -> Tuple[Array, tuple]:
     """Set the prior mean and covariance of the spherical harmonic coefficients.
 
     This method is required by the :py:meth:`solve` method, which
@@ -171,9 +186,7 @@ def set_prior(lmax, mu=None, L=None, cho_L=None):
     Ny = (lmax + 1) * (lmax + 1)
 
     if mu is None:
-        mu = jnp.zeros(Ny)
-        mu[0] = 1.0
-        mu = cast(mu)
+        mu = cast(jnp.zeros(Ny).at[0].set(1.0))
 
     _mu = cast(mu) * cast(jnp.ones(Ny))
     _L = get_covariance(C=L, cho_C=cho_L, N=Ny)
@@ -181,7 +194,9 @@ def set_prior(lmax, mu=None, L=None, cho_L=None):
     return _mu, _L
 
 
-def map_solve(X, flux, cho_C, mu, LInv):
+def map_solve(
+    X: Array, flux: Array, cho_C: float | Array, mu: Array, LInv: float | Array
+) -> Tuple[Array, Array]:
     """
     Compute the maximum a posteriori (MAP) prediction for the
     spherical harmonic coefficients of a map given a flux timeseries.
@@ -231,7 +246,14 @@ def map_solve(X, flux, cho_C, mu, LInv):
     return yhat, cho_ycov
 
 
-def solve(lmax, flux, C, bodies, design_matrix=None, t=None):
+def solve(
+    lmax: int,
+    flux: Array,
+    C: tuple,
+    bodies: list,
+    design_matrix: Array = None,
+    t: Array = None,
+) -> Tuple[Array, Array]:
     """Solve the least-squares problem for the posterior over maps for all bodies.
 
     This method solves the generalized least squares problem given a system
@@ -246,7 +268,8 @@ def solve(lmax, flux, C, bodies, design_matrix=None, t=None):
         flux (array): The flux timeseries.
         C (tuple): A container of covariance matrices (value, cholesky,
             inverse, lndet, kind, N).
-        bodies (list): The bodies of the system.
+        bodies (list): The bodies of the system passed in as dictionaries
+            of the bodies' attributes.
         design_matrix (matrix, optional): The flux design matrix, the
             quantity returned by :py:meth:`design_matrix`. Default is
             None, in which case this is computed based on ``kwargs``.
@@ -284,16 +307,16 @@ def solve(lmax, flux, C, bodies, design_matrix=None, t=None):
     dense_L = False
     for k, body in enumerate(bodies):
         # If no priors have been set on this body
-        if body.map._mu is None or body.map._L is None:
+        if body["mu"] is None or body["L"] is None:
             # Subtract out this term from the data vector,
             # since it is fixed
-            f -= body.map.amp * jnp.dot(X[:, jnp.arange(Ny) + Ny * k], body.map.y)
+            f -= body["amp"] * jnp.dot(X[:, jnp.arange(Ny) + Ny * k], body["y"])
 
         else:
             # Add to our list of indices/bodies to solve for
             inds.extend(jnp.arange(Ny) + Ny * k)
             solved_bodies.append(body)
-            if body.map._L.kind in ["matrix", "cholesky"]:
+            if body["L"]["kind"] in ["matrix", "cholesky"]:
                 dense_L = True
 
     # Do we have at least one body?
@@ -304,18 +327,18 @@ def solve(lmax, flux, C, bodies, design_matrix=None, t=None):
     X = X[:, inds]
 
     # Stack our priors
-    mu = jnp.concatenate([body.map._mu for body in solved_bodies])
+    mu = jnp.concatenate([body["mu"] for body in solved_bodies])
 
     if not dense_L:
         # We can just concatenate vectors
         LInv = jnp.concatenate(
-            [body.map._L.inverse * jnp.ones(body.map.Ny) for body in solved_bodies]
+            [body["L"]["inverse"] * jnp.ones(body["n_max"]) for body in solved_bodies]
         )
     else:
         # FACT: The inverse of a block diagonal matrix
         # is the block diagonal matrix of the inverses.
         LInv = jax.scipy.linalg.block_diag(
-            *[body.map._L.inverse * jnp.eye(body.map.Ny) for body in solved_bodies]
+            *[body["L"]["inverse"] * jnp.eye(body["n_max"]) for body in solved_bodies]
         )
 
     # Compute the MAP solution
@@ -324,17 +347,19 @@ def solve(lmax, flux, C, bodies, design_matrix=None, t=None):
     # Set all the map vectors
     n = 0
     for body in solved_bodies:
-        inds = slice(n, n + body.map.Ny)
-        body.map.amp = x[inds][0]
-        if body.map.ydeg > 0:
-            body.map[1:, :] = x[inds][1:] / body.map.amp
-        n += body.map.Ny
+        inds = slice(n, n + body["n_max"])
+        body["amp"] = x[inds][0]
+        if body["l_max"] > 0:
+            body["y"][1:] = x[inds][1:] / body["amp"]
+        n += body["n_max"]
 
     # Return the mean and covariance
     return (x, cho_cov)
 
 
-def get_lnlike(X, flux, C, mu, L):
+def get_lnlike(
+    X: Array, flux: Array, C: float | Array, mu: Array, L: float | Array
+) -> Array:
     """
     Compute the log marginal likelihood of the data given a design matrix.
 
@@ -385,7 +410,15 @@ def get_lnlike(X, flux, C, mu, L):
     return lnlike[0, 0]
 
 
-def get_lnlike_woodbury(X, flux, CInv, mu, LInv, lndetC, lndetL):
+def get_lnlike_woodbury(
+    X: Array,
+    flux: Array,
+    CInv: float | Array,
+    mu: Array,
+    LInv: float | Array,
+    lndetC: float | Array,
+    lndetL: float | Array,
+) -> Array:
     """
     Compute the log marginal likelihood of the data given a design matrix
     using the Woodbury identity.
@@ -395,8 +428,10 @@ def get_lnlike_woodbury(X, flux, CInv, mu, LInv, lndetC, lndetL):
         flux (array): The flux timeseries.
         CInv (scalar/vector/matrix): The inverse data covariance matrix.
         mu (array): The prior mean of the spherical harmonic coefficients.
-        L (scalar/vector/matrix): The inverse prior covariance of the
+        LInv (scalar/vector/matrix): The inverse prior covariance of the
             spherical harmonic coefficients.
+        lndetC: ...
+        lndetL: # TODO: describe last 3 inputs.
 
     Returns:
         The log marginal likelihood of the `flux` vector conditioned on
@@ -449,7 +484,15 @@ def get_lnlike_woodbury(X, flux, CInv, mu, LInv, lndetC, lndetL):
     return lnlike[0, 0]
 
 
-def lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True):
+def lnlike(
+    lmax: int,
+    flux: Array,
+    C: tuple,
+    bodies: list,
+    design_matrix: Array = None,
+    t: Array = None,
+    woodbury: bool = True,
+) -> Array:
     """Returns the log marginal likelihood of the data given a design matrix.
 
     This method computes the marginal likelihood (marginalized over the
@@ -463,7 +506,8 @@ def lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True):
         flux (array): The flux timeseries.
         C (tuple): A container of covariance matrices (value, cholesky,
             inverse, lndet, kind, N).
-        bodies (list): The bodies of the system.
+        bodies (list): The bodies of the system passed in as dictionaries
+            of the bodies' attributes.
         design_matrix (matrix, optional): The flux design matrix, the
             quantity returned by :py:meth:`design_matrix`. Default is
             None, in which case this is computed based on ``kwargs``.
@@ -504,16 +548,16 @@ def lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True):
     dense_L = False
     for k, body in enumerate(bodies):
         # If no priors have been set on this body
-        if body.map._mu is None or body.map._L is None:
+        if body["mu"] is None or body["L"] is None:
             # Subtract out this term from the data vector,
             # since it is fixed
-            f -= body.map.amp * jnp.dot(X[:, jnp.arange(Ny) + Ny * k], body.map.y)
+            f -= body["amp"] * jnp.dot(X[:, jnp.arange(Ny) + Ny * k], body["y"])
 
         else:
             # Add to our list of indices/bodies to solve for
             inds.extend(jnp.arange(Ny) + Ny * k)
             solved_bodies.append(body)
-            if body.map._L.kind in ["matrix", "cholesky"]:
+            if body["L"]["kind"] in ["matrix", "cholesky"]:
                 dense_L = True
 
     # Do we have at least one body?
@@ -524,29 +568,35 @@ def lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True):
     X = X[:, inds]
 
     # Stack our priors
-    mu = jnp.concatenate([body.map._mu for body in solved_bodies])
+    mu = jnp.concatenate([body["mu"] for body in solved_bodies])
 
     # Compute the likelihood
     if woodbury:
         if not dense_L:
             # We can just concatenate vectors
             LInv = jnp.concatenate(
-                [body.map._L.inverse * jnp.ones(body.map.Ny) for body in solved_bodies]
+                [
+                    body["L"]["inverse"] * jnp.ones(body["n_max"])
+                    for body in solved_bodies
+                ]
             )
         else:
             LInv = jnp.block_diag(
-                *[body.map._L.inverse * jnp.eye(body.map.Ny) for body in solved_bodies]
+                *[
+                    body["L"]["inverse"] * jnp.eye(body["n_max"])
+                    for body in solved_bodies
+                ]
             )
-        lndetL = cast([body.map._L.lndet for body in solved_bodies])
+        lndetL = cast([body["L"]["lndet"] for body in solved_bodies])
         return get_lnlike_woodbury(X, f, C[2], mu, LInv, C[3], lndetL)
     else:
         if not dense_L:
             # We can just concatenate vectors
             L = jnp.concatenate(
-                [body.map._L.value * jnp.ones(body.map.Ny) for body in solved_bodies]
+                [body["L"]["value"] * jnp.ones(body["n_max"]) for body in solved_bodies]
             )
         else:
             L = jnp.block_diag(
-                *[body.map._L.value * jnp.eye(body.map.Ny) for body in solved_bodies]
+                *[body["L"]["value"] * jnp.eye(body["n_max"]) for body in solved_bodies]
             )
         return get_lnlike(X, f, C[0], mu, L)
