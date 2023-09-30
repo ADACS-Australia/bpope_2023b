@@ -19,11 +19,9 @@ config.update("jax_enable_x64", True)
 Notes
 -----
 
-    - Currently, solve() and lnlike() accept the parameter "bodies",
-      which is a list of starry.Primary- and starry.Secondary-like objects.
     - solve() and lnlike() can't yet accept a time series as input over a
       design matrix, since jaxoplanet does not currently have a function
-      for constructing a design matrix.
+      for constructing a design matrix from a time series.
 
 
 Still to do
@@ -75,6 +73,7 @@ def design_matrix(
     return X
 
 
+@jax.jit
 def cast(*args):
     if len(args) == 1:
         return jnp.asarray(args[0], dtype="float64")
@@ -82,14 +81,16 @@ def cast(*args):
         return [jnp.asarray(arg, dtype="float64") for arg in args]
 
 
+@jax.jit
 def cho_solve(A: Array, b: Array) -> Array:
     b_ = jax.scipy.linalg.solve_triangular(A, b, lower=True)
     return jax.scipy.linalg.solve_triangular(jnp.transpose(A), b_, lower=False)
 
 
+@jax.jit
 def get_covariance(
     C: float | Array = None, cho_C: float | Array = None, N: int = None
-) -> Tuple[Array, Array, Array, Array, str, int]:
+) -> Tuple[Array, Array, Array, Array, int, int]:
     """A container for covariance matrices.
 
     Args:
@@ -107,7 +108,7 @@ def get_covariance(
         value = jnp.dot(cholesky, jnp.transpose(cholesky))
         inverse = cho_solve(cholesky, jnp.eye(cholesky.shape[0]))
         lndet = 2 * jnp.sum(jnp.log(jnp.diag(cholesky)))
-        kind = "cholesky"
+        kind = 0  # "cholesky"
         N = cho_C.shape[0]
 
     # User provided the covariance as a scalar, vector, or matrix.
@@ -121,14 +122,14 @@ def get_covariance(
                 inverse = cast(1.0 / C)
                 lndet = cast(N * jnp.log(C))
                 value = C
-                kind = "scalar"
+                kind = 1  # "scalar"
 
             elif C.ndim == 1:
                 cholesky = jnp.sqrt(C)
                 inverse = 1.0 / C
                 lndet = jnp.sum(jnp.log(C))
                 value = C
-                kind = "vector"
+                kind = 2  # "vector"
                 N = C.shape[0]
 
             else:
@@ -136,7 +137,7 @@ def get_covariance(
                 inverse = cho_solve(cholesky, jnp.eye(C.shape[0]))
                 lndet = 2 * jnp.sum(jnp.log(jnp.diag(cholesky)))
                 value = C
-                kind = "matrix"
+                kind = 3  # "matrix"
                 N = C.shape[0]
 
         # Assume it's a scalar
@@ -146,7 +147,7 @@ def get_covariance(
             inverse = cast(1.0 / C)
             lndet = cast(N * jnp.log(C))
             value = C
-            kind = "scalar"
+            kind = 1  # "scalar"
 
     else:
         raise ValueError(
@@ -156,6 +157,7 @@ def get_covariance(
     return value, cholesky, inverse, lndet, kind, N
 
 
+@jax.jit
 def set_data(
     flux: Array, C: float | Array = None, cho_C: float | Array = None
 ) -> Tuple[Array, tuple]:
@@ -184,6 +186,8 @@ def set_data(
     return flux, C
 
 
+# Can't be jitted as long as mu is allowed to be input as a scalar
+# because _mu then depends on the value of lmax.
 def set_prior(
     lmax: int,
     mu: float | Array = None,
@@ -236,6 +240,7 @@ def set_prior(
     return _mu, _L
 
 
+@jax.jit
 def map_solve(
     X: Array, flux: Array, cho_C: float | Array, mu: Array, LInv: float | Array
 ) -> Tuple[Array, Array]:
@@ -288,6 +293,8 @@ def map_solve(
     return yhat, cho_ycov
 
 
+# Can't be jitted as is, since a few computations rely on n_max/Ny,
+# The use of enumerate might also be a problem.
 def solve(
     lmax: int,
     flux: Array,
@@ -335,7 +342,9 @@ def solve(
 
     # Get the full design matrix
     if design_matrix is None:
-        raise ValueError("Design matrix construction not yet implemented.")
+        raise ValueError(
+            "Design matrix construction from timeseries not yet implemented."
+        )
         # assert t is not None, "Please provide a time vector `t`."
         # design_matrix = design_matrix(t)
     X = cast(design_matrix)
@@ -358,7 +367,8 @@ def solve(
             # Add to our list of indices/bodies to solve for
             inds.extend(jnp.arange(Ny) + Ny * k)
             solved_bodies.append(body)
-            if body["L"]["kind"] in ["matrix", "cholesky"]:
+            # if body["L"]["kind"] in ["matrix", "cholesky"]:
+            if body["L"]["kind"] in [0, 3]:  # matrix or cholesky
                 dense_L = True
 
     # Do we have at least one body?
@@ -399,6 +409,7 @@ def solve(
     return (x, cho_cov)
 
 
+@jax.jit
 def get_lnlike(
     X: Array, flux: Array, C: float | Array, mu: Array, L: float | Array
 ) -> Array:
@@ -452,6 +463,7 @@ def get_lnlike(
     return lnlike[0, 0]
 
 
+@jax.jit
 def get_lnlike_woodbury(
     X: Array,
     flux: Array,
@@ -526,6 +538,8 @@ def get_lnlike_woodbury(
     return lnlike[0, 0]
 
 
+# Can't be jitted as is, since a few computations rely on n_max/Ny,
+# The use of enumerate might also be a problem.
 def lnlike(
     lmax: int,
     flux: Array,
@@ -576,7 +590,9 @@ def lnlike(
 
     # Get the full design matrix
     if design_matrix is None:
-        raise ValueError("Design matrix construction not yet implemented.")
+        raise ValueError(
+            "Design matrix construction from timeseries not yet implemented."
+        )
         # assert t is not None, "Please provide a time vector `t`."
         # design_matrix = design_matrix(t)
     X = cast(design_matrix)
@@ -599,7 +615,8 @@ def lnlike(
             # Add to our list of indices/bodies to solve for
             inds.extend(jnp.arange(Ny) + Ny * k)
             solved_bodies.append(body)
-            if body["L"]["kind"] in ["matrix", "cholesky"]:
+            # if body["L"]["kind"] in ["matrix", "cholesky"]:
+            if body["L"]["kind"] in [0, 3]:  # matrix or cholesky
                 dense_L = True
 
     # Do we have at least one body?
