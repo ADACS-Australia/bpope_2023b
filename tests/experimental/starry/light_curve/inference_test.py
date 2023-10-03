@@ -1,13 +1,23 @@
+import itertools
 import warnings
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 from jaxoplanet.experimental.starry.light_curve.inference import (
+    cast,
+    design_matrix,
+    get_lnlike,
+    get_lnlike_woodbury,
     lnlike,
+    map_solve,
     set_data,
     set_prior,
     solve,
 )
+from jaxoplanet.experimental.starry.light_curve.ylm import light_curve
+from scipy.stats import multivariate_normal
 
 """
 Cases tested against starry
@@ -70,71 +80,177 @@ lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True)
 #     np.testing.assert_allclose(calc, expect, atol=1e-12)
 
 
-# @pytest.fixture(autouse=True)
-# def data():
+@pytest.fixture(autouse=True)
+def data():
+    # Generate a synthetic light curve with just a little noise
+    l_max = 1
+    ro = 0.1
+    xo = np.linspace(0, ro + 2, 500)
+    yo = np.zeros(500)
+    zo = np.linspace(0, ro + 2, 500)
+    inc = 0
+    obl = np.pi / 2
+    theta = np.linspace(0, np.pi, 500)
+    n_max = (l_max + 1) ** 2
+    y = np.random.uniform(0, 1, n_max)
+    y[0] = 1.0
+    kwargs = dict(l_max=l_max, obl=obl, y=y, xo=xo, yo=yo, zo=zo, ro=ro, theta=theta)
 
-#     # Generate a synthetic light curve with just a little noise
-#     l_max = 5
-#     ro = 0.1
-#     xo = np.linspace(0, ro + 2, 500)
-#     yo = np.zeros(500)
-#     zo = np.zeros(500)
-#     inc = 0
-#     obl = np.pi / 2
-#     theta = np.linspace(0, np.pi, 500)
-#     n_max = (l_max + 1) ** 2
-#     y = np.random.uniform(0, 1, n_max)
-#     y[0] = 1.0
-#     # kwargs = dict(theta=theta, xo=xo, yo=yo, zo=zo)
+    true_flux = light_curve(l_max, inc, obl, y, xo, yo, zo, ro, theta)
 
-#     true_flux = light_curve(l_max, inc, obl, y, xo, yo, zo, ro, theta)
+    sigma = 1e-5
+    np.random.seed(1)
+    syn_flux = true_flux + np.random.randn(len(theta)) * sigma
 
-#     sigma = 1e-5
-#     np.random.seed(1)
-#     syn_flux = true_flux + np.random.randn(len(theta)) * sigma
+    X = design_matrix(l_max, inc, obl, y, xo, yo, zo, ro, theta)
 
-#     # Get design matrix from starry (not yet in jaxoplanet)
-#     starry.config.lazy = False
-#     m = starry.Map(l_max)
-#     # starry_flux = m.ops.flux(theta, xo, yo, zo, ro, inc, obl, y, m._u, m._f) * (
-#     #     0.5 * np.sqrt(np.pi)
-#     # )
-#     # X = m.design_matrix()
-
-#     X = m.design_matrix(theta=theta, xo=xo, yo=yo, zo=zo, ro=ro)
-
-#     return (l_max, true_flux, syn_flux, sigma, y, X)
+    return (l_max, n_max, syn_flux, sigma, y, X, kwargs)
 
 
-# # val = ["scalar"]
-# # woodbury = [False, True]
-# # solve_inputs: val
-# # lnlike_inputs = itertools.product(val, woodbury)
+# Parameter combinations used in tests.
+vals = [0, 1, 2, 3]
+woodbury = [False, True]
+solve_inputs = itertools.product(vals, vals)
+lnlike_inputs = itertools.product(vals, vals, woodbury)
 
 
-# # @pytest.mark.parametrize("L,C", solve_inputs)
-# def test_map_solve(data):
+@pytest.mark.parametrize("L,C", solve_inputs)
+def test_map_solve(L, C, data):
+    l_max, n_max, syn_flux, sigma, y, X, _ = data
 
-#     l_max, true_flux, syn_flux, sigma, y, X = data
+    # Place a generous prior on the map coefficients
+    if L == 1:  # scalar
+        calc_mu, calc_L = set_prior(l_max, L=1)
+    elif L == 2:  # vector
+        calc_mu, calc_L = set_prior(l_max, L=np.ones(n_max))
+    elif L == 3:  # matrix
+        calc_mu, calc_L = set_prior(l_max, L=np.eye(n_max))
+    elif L == 0:  # cholesky
+        calc_mu, calc_L = set_prior(l_max, cho_L=np.eye(n_max))
 
-#     # Place a generous prior on the map coefficients
-#     (calc_mu, calc_L) = set_prior(l_max, L=1)
+    # Provide the dataset
+    if C == 1:  # scalar
+        _, calc_C = set_data(syn_flux, C=sigma**2)
+    elif C == 2:  # vector
+        _, calc_C = set_data(syn_flux, C=np.ones(len(syn_flux)) * sigma**2)
+    elif C == 3:  # matrix
+        _, calc_C = set_data(syn_flux, C=np.eye(len(syn_flux)) * sigma**2)
+    elif C == 0:  # cholesky
+        _, calc_C = set_data(syn_flux, cho_C=np.eye(len(syn_flux)) * sigma)
 
-#     # Provide the dataset
-#     (calc_flux, calc_C) = set_data(syn_flux, C=sigma ** 2)
+    # Solve the linear problem
+    mu, cho_cov = map_solve(X, syn_flux, calc_C[1], calc_mu, calc_L[2])
 
-#     # Solve the linear problem
-#     mu, cho_cov = map_solve(X, syn_flux, calc_C[1], calc_mu, calc_L[2])
+    # Ensure the likelihood of the true value is close to that of
+    # the MAP solution
+    cov = np.dot(cho_cov, np.transpose(cho_cov))
+    LnL0 = multivariate_normal.logpdf(mu, mean=mu, cov=cov)
+    LnL = multivariate_normal.logpdf(y, mean=mu, cov=cov)
+    assert LnL0 - LnL < 5.00
 
-#     # Ensure the likelihood of the true value is close to that of
-#     # the MAP solution
-#     cov = np.dot(cho_cov, np.transpose(cho_cov))
-#     LnL0 = multivariate_normal.logpdf(mu, mean=mu, cov=cov)
-#     LnL = multivariate_normal.logpdf(y, mean=mu, cov=cov)
-#     assert LnL0 - LnL < 5.00
 
-#     # Check that we can draw from the posterior
-#     # map.draw()
+@pytest.mark.parametrize("L,C,woodbury", lnlike_inputs)
+def test_lnlike(L, C, woodbury, data):
+    """Test the log marginal likelihood method."""
+
+    l_max, n_max, syn_flux, sigma, _, _, kwargs = data
+
+    # Place a generous prior on the map coefficients
+    # and compute prior covariance and inverse covariance matrices
+    if L == 1:  # scalar
+        calc_mu, calc_L = set_prior(l_max, L=1)
+        L = calc_L[0] * jnp.ones(n_max)
+        LInv = calc_L[2] * jnp.ones(n_max)
+    elif L == 2:  # vector
+        calc_mu, calc_L = set_prior(l_max, L=np.ones(n_max))
+        LInv = calc_L[2] * jnp.ones(n_max)
+        L = calc_L[0] * jnp.ones(n_max)
+    elif L == 3:  # matrix
+        calc_mu, calc_L = set_prior(l_max, L=np.eye(n_max))
+        L = jax.scipy.linalg.block_diag(*[calc_L[0] * jnp.eye(n_max)])
+        LInv = jax.scipy.linalg.block_diag(*[calc_L[2] * jnp.eye(n_max)])
+    elif L == 0:  # cholesky
+        calc_mu, calc_L = set_prior(l_max, cho_L=np.eye(n_max))
+        L = jax.scipy.linalg.block_diag(*[calc_L[0] * jnp.eye(n_max)])
+        LInv = jax.scipy.linalg.block_diag(*[calc_L[2] * jnp.eye(n_max)])
+
+    # Provide the dataset
+    if C == 1:  # scalar
+        _, calc_C = set_data(syn_flux, C=sigma**2)
+    elif C == 2:  # vector
+        _, calc_C = set_data(syn_flux, C=np.ones(len(syn_flux)) * sigma**2)
+    elif C == 3:  # matrix
+        _, calc_C = set_data(syn_flux, C=np.eye(len(syn_flux)) * sigma**2)
+    elif C == 0:  # cholesky
+        _, calc_C = set_data(syn_flux, cho_C=np.eye(len(syn_flux)) * sigma)
+
+    # Compute the marginal log likelihood for different inclinations
+    incs = [15, 30, 45, 60, 75, 90]
+    ll = np.zeros_like(incs, dtype=float)
+    for i, inc in enumerate(incs):
+        X = design_matrix(inc=inc, **kwargs)
+        if woodbury is True:
+            lndetL = cast([calc_L[3]])
+            ll[i] = get_lnlike_woodbury(
+                X, syn_flux, calc_C[2], calc_mu, LInv, calc_C[3], lndetL
+            )
+        else:
+            ll[i] = get_lnlike(X, syn_flux, calc_C[0], calc_mu, L)
+
+    # Verify that we get the correct inclination
+    assert incs[np.argmax(ll)] == 60
+    # TODO: determine benchmark
+    # assert np.allclose(ll[np.argmax(ll)], 974.221605)  # benchmarked
+
+
+def test_map_solve_scalar(data):
+    l_max, _, syn_flux, sigma, y, X, _ = data
+
+    # Place a generous prior on the map coefficients
+    calc_mu, calc_L = set_prior(l_max, L=1)
+
+    # Provide the dataset
+    _, calc_C = set_data(syn_flux, C=sigma**2)
+
+    # Solve the linear problem
+    mu, cho_cov = map_solve(X, syn_flux, calc_C[1], calc_mu, calc_L[2])
+
+    # Ensure the likelihood of the true value is close to that of
+    # the MAP solution
+    cov = np.dot(cho_cov, np.transpose(cho_cov))
+    LnL0 = multivariate_normal.logpdf(mu, mean=mu, cov=cov)
+    LnL = multivariate_normal.logpdf(y, mean=mu, cov=cov)
+    assert LnL0 - LnL < 5.00
+
+
+@pytest.mark.parametrize("woodbury", [True, False])
+def test_lnlike_scalar(woodbury, data):
+    l_max, n_max, syn_flux, sigma, _, _, kwargs = data
+
+    # Place a generous prior on the map coefficients
+    calc_mu, calc_L = set_prior(l_max, L=1)
+    L = calc_L[0] * jnp.ones(n_max)
+    LInv = jnp.concatenate([calc_L[2] * jnp.ones(n_max)])
+    lndetL = cast([calc_L[3]])
+
+    # Provide the dataset
+    _, calc_C = set_data(syn_flux, C=sigma**2)
+
+    # Compute the marginal log likelihood for different inclinations
+    incs = [15, 30, 45, 60, 75, 90]
+    ll = np.zeros_like(incs, dtype=float)
+    for i, inc in enumerate(incs):
+        X = design_matrix(inc=inc, **kwargs)
+        if woodbury is True:
+            ll[i] = get_lnlike_woodbury(
+                X, syn_flux, calc_C[2], calc_mu, LInv, calc_C[3], lndetL
+            )
+        else:
+            ll[i] = get_lnlike(X, syn_flux, calc_C[0], calc_mu, L)
+
+    # Verify that we get the correct inclination
+    assert incs[np.argmax(ll)] == 60
+    # assert np.allclose(ll[np.argmax(ll)], 974.221605)  # benchmarked
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])

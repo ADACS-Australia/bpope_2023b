@@ -640,7 +640,7 @@ def lnlike(
                 ]
             )
         else:
-            LInv = jnp.block_diag(
+            LInv = jax.scipy.linalg.block_diag(
                 *[
                     body["L"]["inverse"] * jnp.eye(body["n_max"])
                     for body in solved_bodies
@@ -655,7 +655,7 @@ def lnlike(
                 [body["L"]["value"] * jnp.ones(body["n_max"]) for body in solved_bodies]
             )
         else:
-            L = jnp.block_diag(
+            L = jax.scipy.linalg.block_diag(
                 *[body["L"]["value"] * jnp.eye(body["n_max"]) for body in solved_bodies]
             )
         return get_lnlike(X, f, C[0], mu, L)
