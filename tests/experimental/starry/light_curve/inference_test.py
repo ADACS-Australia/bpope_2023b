@@ -17,6 +17,7 @@ from jaxoplanet.experimental.starry.light_curve.inference import (
     solve,
 )
 from jaxoplanet.experimental.starry.light_curve.ylm import light_curve
+from jaxoplanet.test_utils import assert_allclose
 from scipy.stats import multivariate_normal
 
 """
@@ -88,7 +89,7 @@ def data():
     xo = np.linspace(0, ro + 2, 500)
     yo = np.zeros(500)
     zo = np.linspace(0, ro + 2, 500)
-    inc = 0
+    inc = np.pi / 3
     obl = np.pi / 2
     theta = np.linspace(0, np.pi, 500)
     n_max = (l_max + 1) ** 2
@@ -149,6 +150,26 @@ def test_map_solve(L, C, data):
     assert LnL0 - LnL < 5.00
 
 
+def test_map_solve_scalar(data):
+    l_max, _, syn_flux, sigma, y, X, _ = data
+
+    # Place a generous prior on the map coefficients
+    calc_mu, calc_L = set_prior(l_max, L=1)
+
+    # Provide the dataset
+    _, calc_C = set_data(syn_flux, C=sigma**2)
+
+    # Solve the linear problem
+    mu, cho_cov = map_solve(X, syn_flux, calc_C[1], calc_mu, calc_L[2])
+
+    # Ensure the likelihood of the true value is close to that of
+    # the MAP solution
+    cov = np.dot(cho_cov, np.transpose(cho_cov))
+    LnL0 = multivariate_normal.logpdf(mu, mean=mu, cov=cov)
+    LnL = multivariate_normal.logpdf(y, mean=mu, cov=cov)
+    assert LnL0 - LnL < 5.00
+
+
 @pytest.mark.parametrize("L,C,woodbury", lnlike_inputs)
 def test_lnlike(L, C, woodbury, data):
     """Test the log marginal likelihood method."""
@@ -185,7 +206,7 @@ def test_lnlike(L, C, woodbury, data):
         _, calc_C = set_data(syn_flux, cho_C=np.eye(len(syn_flux)) * sigma)
 
     # Compute the marginal log likelihood for different inclinations
-    incs = [15, 30, 45, 60, 75, 90]
+    incs = [0, np.pi / 12, np.pi / 6, np.pi / 4, np.pi / 3, np.pi / 2]
     ll = np.zeros_like(incs, dtype=float)
     for i, inc in enumerate(incs):
         X = design_matrix(inc=inc, **kwargs)
@@ -198,29 +219,8 @@ def test_lnlike(L, C, woodbury, data):
             ll[i] = get_lnlike(X, syn_flux, calc_C[0], calc_mu, L)
 
     # Verify that we get the correct inclination
-    assert incs[np.argmax(ll)] == 60
-    # TODO: determine benchmark
-    # assert np.allclose(ll[np.argmax(ll)], 974.221605)  # benchmarked
-
-
-def test_map_solve_scalar(data):
-    l_max, _, syn_flux, sigma, y, X, _ = data
-
-    # Place a generous prior on the map coefficients
-    calc_mu, calc_L = set_prior(l_max, L=1)
-
-    # Provide the dataset
-    _, calc_C = set_data(syn_flux, C=sigma**2)
-
-    # Solve the linear problem
-    mu, cho_cov = map_solve(X, syn_flux, calc_C[1], calc_mu, calc_L[2])
-
-    # Ensure the likelihood of the true value is close to that of
-    # the MAP solution
-    cov = np.dot(cho_cov, np.transpose(cho_cov))
-    LnL0 = multivariate_normal.logpdf(mu, mean=mu, cov=cov)
-    LnL = multivariate_normal.logpdf(y, mean=mu, cov=cov)
-    assert LnL0 - LnL < 5.00
+    assert incs[np.argmax(ll)] == np.pi / 3
+    assert_allclose(ll[np.argmax(ll)], 5002.211, rtol=1e-5)  # benchmarked
 
 
 @pytest.mark.parametrize("woodbury", [True, False])
@@ -237,7 +237,7 @@ def test_lnlike_scalar(woodbury, data):
     _, calc_C = set_data(syn_flux, C=sigma**2)
 
     # Compute the marginal log likelihood for different inclinations
-    incs = [15, 30, 45, 60, 75, 90]
+    incs = [0, np.pi / 12, np.pi / 6, np.pi / 4, np.pi / 3, np.pi / 2]
     ll = np.zeros_like(incs, dtype=float)
     for i, inc in enumerate(incs):
         X = design_matrix(inc=inc, **kwargs)
@@ -249,8 +249,8 @@ def test_lnlike_scalar(woodbury, data):
             ll[i] = get_lnlike(X, syn_flux, calc_C[0], calc_mu, L)
 
     # Verify that we get the correct inclination
-    assert incs[np.argmax(ll)] == 60
-    # assert np.allclose(ll[np.argmax(ll)], 974.221605)  # benchmarked
+    assert incs[np.argmax(ll)] == np.pi / 3
+    assert_allclose(ll[np.argmax(ll)], 5002.211, rtol=1e-5)  # benchmarked
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])
@@ -288,13 +288,13 @@ def test_compare_starry_set_data(lmax, C):
     (calc_flux, calc_C) = set_data(flux, C=C)
 
     kind = {"cholesky": 0, "scalar": 1, "vector": 2, "matrix": 3}
-    np.testing.assert_allclose(calc_flux, expect_flux, atol=1e-12)  # flux
-    np.testing.assert_allclose(calc_C[0], expect_C[0], atol=1e-12)  # value
-    np.testing.assert_allclose(calc_C[1], expect_C[1], atol=1e-12)  # cholesky
-    np.testing.assert_allclose(calc_C[2], expect_C[2], atol=1e-12)  # inverse
-    np.testing.assert_allclose(calc_C[3], expect_C[3], atol=1e-12)  # lndet
-    np.testing.assert_allclose(calc_C[4], kind[expect_C[4]], atol=1e-12)  # kind
-    np.testing.assert_allclose(calc_C[5], expect_C[5], atol=1e-12)  # N
+    assert_allclose(calc_flux, expect_flux)  # flux
+    assert_allclose(calc_C[0], expect_C[0])  # value
+    assert_allclose(calc_C[1], expect_C[1])  # cholesky
+    assert_allclose(calc_C[2], expect_C[2])  # inverse
+    assert_allclose(calc_C[3], expect_C[3])  # lndet
+    assert_allclose(calc_C[4], kind[expect_C[4]])  # kind
+    assert_allclose(calc_C[5], expect_C[5])  # N
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])
@@ -334,13 +334,13 @@ def test_compare_starry_set_prior(lmax, pri_mu, pri_L):
     (calc_mu, calc_L) = set_prior(lmax, mu=pri_mu, L=pri_L)
 
     kind = {"cholesky": 0, "scalar": 1, "vector": 2, "matrix": 3}
-    np.testing.assert_allclose(calc_mu, expect_mu, atol=1e-12)  # mu
-    np.testing.assert_allclose(calc_L[0], expect_L[0], atol=1e-12)  # value
-    np.testing.assert_allclose(calc_L[1], expect_L[1], atol=1e-12)  # cholesky
-    np.testing.assert_allclose(calc_L[2], expect_L[2], atol=1e-12)  # inverse
-    np.testing.assert_allclose(calc_L[3], expect_L[3], atol=1e-12)  # lndet
-    np.testing.assert_allclose(calc_L[4], kind[expect_L[4]], atol=1e-12)  # kind
-    np.testing.assert_allclose(calc_L[5], expect_L[5], atol=1e-12)  # N
+    assert_allclose(calc_mu, expect_mu)  # mu
+    assert_allclose(calc_L[0], expect_L[0])  # value
+    assert_allclose(calc_L[1], expect_L[1])  # cholesky
+    assert_allclose(calc_L[2], expect_L[2])  # inverse
+    assert_allclose(calc_L[3], expect_L[3])  # lndet
+    assert_allclose(calc_L[4], kind[expect_L[4]])  # kind
+    assert_allclose(calc_L[5], expect_L[5])  # N
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])
@@ -406,8 +406,8 @@ def test_compare_starry_solve(lmax):
 
     (calc_x, calc_cho_cov) = solve(lmax, flux, expect_C, bodies, design_matrix=dm)
 
-    np.testing.assert_allclose(calc_x, expect_x, atol=1e-9)
-    np.testing.assert_allclose(calc_cho_cov, expect_cho_cov, atol=1e-11)
+    assert_allclose(calc_x, expect_x)
+    assert_allclose(calc_cho_cov, expect_cho_cov)
 
 
 @pytest.mark.parametrize("lmax", [10, 7, 5])
@@ -464,4 +464,4 @@ def test_compare_starry_lnlike(lmax, woodbury):
 
     calc_ln = lnlike(lmax, flux, expect_C, bodies, design_matrix=dm, woodbury=woodbury)
 
-    np.testing.assert_allclose(calc_ln, expect_ln, atol=1e-12)
+    assert_allclose(calc_ln, expect_ln)
