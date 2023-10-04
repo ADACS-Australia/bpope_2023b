@@ -23,16 +23,6 @@ Notes
       design matrix, since jaxoplanet does not currently have a function
       for constructing a design matrix from a time series.
 
-
-Still to do
------------
-
-    check if jax has any functions we can use
-    jit/partial jit functions
-    add signatures
-    add input types
-    construct an 'eclipsing binary' file from these functions.
-
 """
 
 

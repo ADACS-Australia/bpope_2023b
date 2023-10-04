@@ -20,38 +20,6 @@ from jaxoplanet.experimental.starry.light_curve.ylm import light_curve
 from jaxoplanet.test_utils import assert_allclose
 from scipy.stats import multivariate_normal
 
-"""
-Cases tested against starry
----------------------------
-
-set_data(flux, C=None, cho_C=None)
-
-    - tested with C as a scalar, vector
-    - NOT tested with C as a matrix
-    - NOT tested with cho_C
-
-set_prior(lmax, mu, L)
-
-    - tested 3x different lmax
-    - tested mu as default, scalar, vector
-    - tested L as scalar, vector
-    - NOT tested L as a matrix
-
-solve(lmax, flux, C, bodies, design_matrix=None, t=None)
-
-    - tested 3x different lmax
-    - tested with design_matrix
-    - NOT tested with t (NOT YET implemented)
-
-lnlike(lmax, flux, C, bodies, design_matrix=None, t=None, woodbury=True)
-
-    - tested 3x different lmax
-    - tested with design_matrix
-    - NOT tested with t (NOT YET implemented)
-    - tested woodbury as [True, False]
-"""
-
-
 # TODO: get design matrix test passing
 # @pytest.mark.parametrize("l_max", [5, 4, 3, 2, 1, 0])
 # def test_compare_starry_design_matrix(l_max):
