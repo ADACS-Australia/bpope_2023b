@@ -8,19 +8,23 @@ from jaxoplanet.test_utils import assert_allclose
 
 
 @pytest.mark.parametrize("l_max", [5, 4, 3, 2, 1, 0])
-def test_compare_starry_light_curve(l_max):
+@pytest.mark.parametrize("n", [500, 1, 0])
+def test_compare_starry_light_curve(l_max, n):
     starry = pytest.importorskip("starry")
     starry.config.lazy = False
     theano = pytest.importorskip("theano")
     theano.config.gcc__cxxflags += " -fexceptions"
 
     ro = 0.1
-    xo = jnp.linspace(0, ro + 2, 500)
-    yo = jnp.zeros(500)
-    zo = jnp.zeros(500)
+    xo = jnp.linspace(0, ro + 2, n)
+    yo = jnp.zeros(n)
+    zo = jnp.zeros(n)
     inc = 0
     obl = np.pi / 2
-    theta = jnp.linspace(0, np.pi, 500)
+    theta = jnp.linspace(0, np.pi, n)
+
+    # starry map.flux takes theta in the unit of degree
+    jnp.linspace(0, 180, n)
     n_max = (l_max + 1) ** 2
     y = np.random.uniform(0, 1, n_max)
     y[0] = 1.0

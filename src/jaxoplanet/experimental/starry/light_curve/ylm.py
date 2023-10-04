@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from jaxoplanet.experimental.starry.basis import A1, A
 from jaxoplanet.experimental.starry.light_curve.utils import right_project
-from jaxoplanet.experimental.starry.rotation import dotR
+from jaxoplanet.experimental.starry.rotation import R_full
 from jaxoplanet.experimental.starry.solution import rT_solution_vector, solution_vector
 from jaxoplanet.types import Array
 
@@ -23,8 +23,10 @@ def light_curve(
     theta: Array,
     order=10,
 ) -> Array:
-    b = jnp.sqrt(xo**2 + yo**2)
-    theta_z = jnp.arctan2(xo, yo)
+    b_ = jnp.sqrt(xo**2 + yo**2)
+    b = jnp.atleast_1d(b_)
+    theta_z_ = jnp.arctan2(xo, yo)
+    theta_z = jnp.atleast_1d(theta_z_)
 
     # occultation mask
     cond_rot = (b >= (1.0 + ro)) | (zo <= 0.0) | (ro == 0.0)
@@ -32,7 +34,8 @@ def light_curve(
 
     sT = solution_vector(l_max, order=order)(b, ro)
     sTA = sT @ A(l_max)
-    sTAR = dotR(l_max, [0, 0, 1])(sTA, theta_z)
+    # sTAR = dotR(l_max, [0, 0, 1])(sTA, theta_z)
+    sTAR = jax.vmap(jnp.dot, in_axes=(0, 0))(sTA, R_full(l_max, [0, 0, 1])(theta_z))
 
     # rotational phase
     rTA1 = rT_solution_vector(l_max) @ A1(l_max)

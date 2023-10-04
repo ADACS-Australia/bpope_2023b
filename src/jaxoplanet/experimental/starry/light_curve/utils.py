@@ -42,8 +42,8 @@ def right_project(l_max: int, M: Array, inc: float, obl: float, theta: Array):
         R_theta = R_full(l_max, uz)(theta_b)
     if theta_.shape[0] == M.shape[0]:
         R_theta = R_full(l_max, uz)(theta_)
-
     # TODO: raise error for all other cases
+
     M_cor = jax.vmap(jnp.dot, in_axes=(0, 0))(M_sky, R_theta)
 
     # Rotate to the polar frame
