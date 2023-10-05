@@ -87,7 +87,7 @@ def test_compare_starry_rT_solution_vector(lmax):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         m = starry.Map(lmax)
-        s_expect = m.ops.rT.eval()
+        s_expect = m.ops.rT.eval().flatten()
     s_calc = rT_solution_vector(lmax)
 
     assert_allclose(s_expect, s_calc)
