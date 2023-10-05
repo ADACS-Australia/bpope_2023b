@@ -20,33 +20,35 @@ from jaxoplanet.experimental.starry.light_curve.ylm import light_curve
 from jaxoplanet.test_utils import assert_allclose
 from scipy.stats import multivariate_normal
 
-# TODO: get design matrix test passing
-# @pytest.mark.parametrize("l_max", [5, 4, 3, 2, 1, 0])
-# def test_compare_starry_design_matrix(l_max):
-#     starry = pytest.importorskip("starry")
-#     starry.config.lazy = False
-#     theano = pytest.importorskip("theano")
-#     theano.config.gcc__cxxflags += " -fexceptions"
 
-#     ro = 0.1
-#     xo = jnp.linspace(0, ro + 2, 500)
-#     yo = jnp.zeros(500)
-#     zo = jnp.linspace(0, ro + 2, 500)
-#     inc = 0
-#     obl = np.pi / 2
-#     theta = jnp.linspace(0, np.pi, 500)
-#     n_max = (l_max + 1) ** 2
-#     y = np.random.uniform(0, 1, n_max)
-#     y[0] = 1.0
+@pytest.mark.parametrize("l_max", [5, 4, 3, 2, 1, 0])
+def test_compare_starry_design_matrix(l_max):
+    starry = pytest.importorskip("starry")
+    starry.config.lazy = False
+    theano = pytest.importorskip("theano")
+    theano.config.gcc__cxxflags += " -fexceptions"
 
-#     with warnings.catch_warnings():
-#         warnings.simplefilter("ignore")
-#         m = starry.Map(l_max)
-#         expect = m.ops.X(theta, xo, yo, zo, ro, inc, obl, m._u, m._f)
+    ro = 0.1
+    xo = jnp.linspace(0, ro + 2, 500)
+    yo = jnp.zeros(500)
+    zo = jnp.linspace(0, ro + 2, 500)
+    inc = 0
+    obl = np.pi / 2
+    theta = jnp.linspace(0, np.pi, 500)
+    n_max = (l_max + 1) ** 2
+    y = np.random.uniform(0, 1, n_max)
+    y[0] = 1.0
 
-#     calc = design_matrix(l_max, inc, obl, y, xo, yo, zo, ro, theta)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        m = starry.Map(l_max)
+        expect = m.ops.X(theta, xo, yo, zo, ro, inc, obl, m._u, m._f) * (
+            0.5 * np.sqrt(np.pi)
+        )
 
-#     np.testing.assert_allclose(calc, expect, atol=1e-12)
+    calc = design_matrix(l_max, inc, obl, y, xo, yo, zo, ro, theta)
+
+    assert_allclose(calc, expect)
 
 
 @pytest.fixture(autouse=True)
