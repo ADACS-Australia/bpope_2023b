@@ -18,7 +18,7 @@ def test_compare_starry_light_curve(l_max, n):
     ro = 0.1
     xo = jnp.linspace(0, ro + 2, n)
     yo = jnp.zeros(n)
-    zo = jnp.zeros(n)
+    zo = jnp.ones(n)
     inc = 0
     obl = np.pi / 2
     theta = jnp.linspace(0, np.pi, n)

@@ -34,7 +34,6 @@ def light_curve(
 
     sT = solution_vector(l_max, order=order)(b, ro)
     sTA = sT @ A(l_max)
-    # sTAR = dotR(l_max, [0, 0, 1])(sTA, theta_z)
     sTAR = jax.vmap(jnp.dot, in_axes=(0, 0))(sTA, R_full(l_max, [0, 0, 1])(theta_z))
 
     # rotational phase
