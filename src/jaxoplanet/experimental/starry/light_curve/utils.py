@@ -1,6 +1,5 @@
 from typing import NamedTuple, Optional
 
-import jax
 import jax.numpy as jnp
 
 from jaxoplanet.experimental.starry.rotation import R_full
@@ -37,18 +36,23 @@ def right_project(l_max: int, M: Array, inc: float, obl: float, theta: Array):
     M_sky = M @ R_sky
 
     # Rotate to the correct phase
-    if theta_.shape[0] == 1:
-        theta_b = jnp.broadcast_to(theta_, (M.shape[0],))
-        R_theta = R_full(l_max, uz)(theta_b)
-    if theta_.shape[0] == M.shape[0]:
-        R_theta = R_full(l_max, uz)(theta_)
+    # if theta_.shape[0] == 1:
+    #     theta_b = jnp.broadcast_to(theta_, (M.shape[0],))
+    #     R_theta = R_full(l_max, uz)(theta_b)
+    # if theta_.shape[0] == M.shape[0]:
+    #     R_theta = R_full(l_max, uz)(theta_)
+    R_theta = R_full(l_max, uz)(theta_)
     # TODO: raise error for all other cases
-
-    M_cor = jax.vmap(jnp.dot, in_axes=(0, 0))(M_sky, R_theta)
-
+    # print("R_theta shape: ", R_theta.shape)
+    # M_cor = jax.vmap(jnp.dot, in_axes=(0, 0))(M_sky, R_theta)
+    # print("M sky shape: ", M_sky.shape)
+    # M_cor_ = jnp.squeeze(M_cor)
+    # print("M_cor shape: ", M_cor_.shape)
+    M_cor = jnp.matmul(M_sky[:, None, :], R_theta).squeeze(1)
+    print("shape of M_cor: ", M_cor.shape)
     # Rotate to the polar frame
-    M_ = M_cor @ R_full(l_max, ux)(0.5 * jnp.pi)
-
+    M_ = (M_cor @ R_full(l_max, ux)(0.5 * jnp.pi)).squeeze()
+    print("M_ shape: ", M_.shape)
     return M_
 
 

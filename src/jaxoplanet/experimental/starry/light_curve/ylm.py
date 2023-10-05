@@ -45,5 +45,8 @@ def light_curve(
 
     # get the design matrix
     X = right_project(l_max, sTAR_, inc, obl, theta)
-
-    return X @ y
+    print("X shape: ", X.shape)
+    print("shape of y: ", y.shape)
+    if y.shape == (1,):
+        return jnp.dot(X, y[0])
+    return jnp.dot(X, y)

@@ -29,8 +29,9 @@ def test_compare_starry_right_project(l_max):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         m = starry.Map(l_max)
-        expected = m.ops.right_project(M, inc, obl, theta)
+        expected = m.ops.right_project(M, inc, obl, theta).squeeze()
     calc = right_project(l_max, M, inc, obl, theta)
+    print("shape of result: ", expected.shape)
     assert_allclose(calc, expected)
 
 
@@ -55,8 +56,9 @@ def test_compare_starry_right_project_edge_case(l_max, theta, n_t):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         m = starry.Map(l_max)
-        expected = m.ops.right_project(M, inc, obl, theta)
+        expected = m.ops.right_project(M, inc, obl, theta).squeeze()
 
     calc = right_project(l_max, M, inc, obl, theta)
-
+    print("shape of result: ", calc.shape)
+    print("shape of expected: ", expected.shape)
     assert_allclose(calc, expected)
