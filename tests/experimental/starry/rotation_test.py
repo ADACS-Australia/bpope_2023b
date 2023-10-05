@@ -1,14 +1,8 @@
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
-from jaxoplanet.experimental.starry.rotation import (
-    R_full,
-    Rdot,
-    axis_to_euler,
-    dotR,
-    dotR_array,
-    dotR_scalar,
-)
+from jaxoplanet.experimental.starry.rotation import R_full, Rdot, axis_to_euler, dotR
 from jaxoplanet.test_utils import assert_allclose
 
 
@@ -37,6 +31,42 @@ def test_compare_starry_R_full(l_max, u):
     assert_allclose(calc, expected)
 
 
+@pytest.mark.parametrize("l_max", [10, 7, 5, 4, 3, 2, 1, 0])
+@pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.1, 0)])
+def test_compare_R_full_with_starry_dotR(l_max, u):
+    """Comparison test with starry full rotation matrix
+    obtained from OpsYlm.dotR"""
+    starry = pytest.importorskip("starry")
+    theta = 0.1
+    np.random.seed(l_max)
+    n_max = l_max**2 + 2 * l_max + 1
+    M = np.random.rand(30, n_max)
+
+    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
+    expected = m.dotR(M, *u, theta)
+
+    calc = M @ R_full(l_max, u)(theta)
+    assert_allclose(calc, expected)
+
+
+@pytest.mark.parametrize("l_max", [10, 7, 5, 4, 3, 2, 1, 0])
+def test_compare_R_full_with_starry_tensordotRz(l_max):
+    """Comparison test with starry"""
+    starry = pytest.importorskip("starry")
+    theta = np.linspace(0, np.pi, 30)
+    np.random.seed(l_max)
+    n_max = l_max**2 + 2 * l_max + 1
+    M = np.random.rand(30, n_max)
+
+    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
+    expected = m.tensordotRz(M, theta)
+
+    R_theta = R_full(l_max, [0, 0, 1])(theta)
+    calc = jax.vmap(jnp.dot, in_axes=(0, 0))(M, R_theta)
+
+    assert_allclose(calc, expected)
+
+
 @pytest.mark.parametrize("l_max", [10, 7, 5, 4])
 @pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1)])
 def test_Rdot(l_max, u):
@@ -49,63 +79,43 @@ def test_Rdot(l_max, u):
     assert_allclose(r(y, theta), r_full(theta) @ y)
 
 
-@pytest.mark.parametrize("l_max", [10, 7, 5, 4])
+@pytest.mark.parametrize("l_max", [10, 7, 5, 4, 3, 2, 1, 0])
 @pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1)])
-def test_compare_starry_dotR_with_scalar_theta(l_max, u):
+def test_compare_dotR_with_starry_dotR(l_max, u):
     """Comparison test with starry OpsYlm.dotR"""
     starry = pytest.importorskip("starry")
     theta = 0.1
     np.random.seed(l_max)
     n_max = l_max**2 + 2 * l_max + 1
-    M = np.random.rand(n_max, n_max)
+    n_phase = 100
+    M = np.random.rand(n_phase, n_max)
+
     m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
     expected = m.dotR(M, *u, theta)
-    calc = dotR(l_max, u)(M, theta)
+
+    theta_ = jnp.broadcast_to(theta, (n_phase,))
+    dotr_func = dotR(l_max, u)
+    calc = jax.vmap(dotr_func)(M, theta_)
+
     assert_allclose(calc, expected)
 
 
-@pytest.mark.parametrize("l_max", [10, 7, 5, 4])
-def test_compare_starry_dotR_with_array_theta(l_max):
-    """Comparison test with starry OpsYlm.dotR"""
-    starry = pytest.importorskip("starry")
-    u = [0.0, 0.0, 1.0]
-    theta = np.arange(0.1, np.pi, 0.1)
-    np.random.seed(l_max)
-    n_max = l_max**2 + 2 * l_max + 1
-    M = np.random.rand(theta.shape[0], n_max)
-    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
-    expected = m.tensordotRz(M, theta)
-    calc = dotR(l_max, u)(M, theta)
-    assert_allclose(calc, expected)
-
-
-@pytest.mark.parametrize("l_max", [10, 7, 5, 4])
-@pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1)])
-def test_compare_starry_dotR_scalar(l_max, u):
-    """Comparison test with starry OpsYlm.dotR"""
-    starry = pytest.importorskip("starry")
-    theta = 0.1
-    np.random.seed(l_max)
-    n_max = l_max**2 + 2 * l_max + 1
-    M = np.random.rand(n_max, n_max)
-    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
-    expected = m.dotR(M, *u, theta)
-    calc = dotR_scalar(l_max, u)(M, theta)
-    assert_allclose(calc, expected)
-
-
-@pytest.mark.parametrize("l_max", [10, 7, 5, 4])
-def test_compare_starry_dotR_array(l_max):
+@pytest.mark.parametrize("l_max", [10, 7, 5, 4, 3, 2, 1, 0])
+def test_compare_dotR_with_starry_tensordotRz(l_max):
     """Comparison test with starry OpsYlm.tensordotRz"""
     starry = pytest.importorskip("starry")
     u = [0.0, 0.0, 1.0]
-    theta = np.arange(0.1, np.pi, 0.1)
+    n_phase = 100
+    theta = np.linspace(0.1, np.pi, n_phase)
     np.random.seed(l_max)
     n_max = l_max**2 + 2 * l_max + 1
-    M = np.random.rand(theta.shape[0], n_max)
+    M = np.random.rand(n_phase, n_max)
+
     m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
     expected = m.tensordotRz(M, theta)
-    calc = dotR_array(l_max, u)(M, theta)
+
+    dotr_func = dotR(l_max, u)
+    calc = jax.vmap(dotr_func)(M, theta)
     assert_allclose(calc, expected)
 
 
