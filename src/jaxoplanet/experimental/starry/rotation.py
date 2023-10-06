@@ -4,7 +4,6 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import vmap
 from jax.scipy.linalg import block_diag
 from scipy.special import factorial
 
@@ -84,6 +83,7 @@ def Rl(l: int):
     Array
         rotation matrix
     """
+    tol = 1.0e-16
     # U
     U = np.zeros((2 * l + 1, 2 * l + 1), dtype=np.complex_)
     Ud1 = np.ones(2 * l + 1) * 1j
@@ -98,25 +98,39 @@ def Rl(l: int):
     m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
     k = np.arange(0, 2 * l + 2)[:, None, None]
 
+    denom = (
+        factorial(k)
+        * factorial(l + m - k)
+        * factorial(l - mp - k)
+        * factorial(mp - m + k)
+    )
+
+    mask = denom != 0
+
+    numer = (
+        jnp.power(-1 + 0j, mp + m)
+        * jnp.sqrt(
+            factorial(l - m) * factorial(l + m) * factorial(l - mp) * factorial(l + mp)
+        )
+        * (-1) ** k
+    ) * mask
+
+    # add tol to elements with zero value in denominator;
+    # change the value of corresponding elements in numerator to zero
+    fac = (numer * mask) / (denom + ~mask * tol)
+
     @jax.jit
     def _Rl(alpha: float, beta: float, gamma: float):
+        # if beta_tol is too small, it may result in nan value when taking
+        # gradient; the following value is tweaked for x64 enabled and
+        # l in range (0, 17)
+        beta_tol = 1.0e-8
+        beta = jnp.where(beta % jnp.pi == 0, beta + beta_tol, beta)
+
         dlm = (
-            jnp.power(-1 + 0j, mp + m)
-            * jnp.sqrt(
-                factorial(l - m)
-                * factorial(l + m)
-                * factorial(l - mp)
-                * factorial(l + mp)
-            )
-            * (-1) ** k
+            fac
             * jnp.cos(beta / 2) ** (2 * l + m - mp - 2 * k)
             * jnp.sin(beta / 2) ** (-m + mp + 2 * k)
-            / (
-                factorial(k)
-                * factorial(l + m - k)
-                * factorial(l - mp - k)
-                * factorial(mp - m + k)
-            )
         )
 
         dlm = jnp.nansum(dlm, 0)
@@ -125,63 +139,6 @@ def Rl(l: int):
         return jnp.real(jnp.linalg.solve(U, Dlm.T) @ U)
 
     return _Rl
-
-
-def Rl_vmap(l: int):
-    """Rotation matrix of the spherical harmonics map order l
-
-    Parameters
-    ----------
-    l : int
-        order
-
-    Returns
-    -------
-    Array
-        rotation matrix
-    """
-    # U
-    U = np.zeros((2 * l + 1, 2 * l + 1), dtype=np.complex_)
-    Ud1 = np.ones(2 * l + 1) * 1j
-    Ud1[l + 1 : :] = (-1) ** np.arange(1, l + 1)
-    np.fill_diagonal(U, Ud1)
-    np.fill_diagonal(np.fliplr(U), -1j * Ud1)
-    U[l, l] = np.sqrt(2)
-    U *= 1 / np.sqrt(2)
-    U = jnp.array(U)
-
-    # dlm
-    m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
-    k = np.arange(0, 2 * l + 2)[:, None, None]
-
-    @jax.jit
-    # @partial(jnp.vectorize, signature=f"(),(),()->({U.shape[0]},{U.shape[1]})")
-    def _Rl(alpha: Array, beta: Array, gamma: Array):
-        dlm = (
-            jnp.power(-1 + 0j, mp + m)
-            * jnp.sqrt(
-                factorial(l - m)
-                * factorial(l + m)
-                * factorial(l - mp)
-                * factorial(l + mp)
-            )
-            * (-1) ** k
-            * jnp.cos(beta / 2) ** (2 * l + m - mp - 2 * k)
-            * jnp.sin(beta / 2) ** (-m + mp + 2 * k)
-            / (
-                factorial(k)
-                * factorial(l + m - k)
-                * factorial(l - mp - k)
-                * factorial(mp - m + k)
-            )
-        )
-
-        dlm = jnp.nansum(dlm, 0)
-        Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
-
-        return jnp.real(jnp.linalg.solve(U, Dlm.T) @ U)
-
-    return vmap(_Rl, in_axes=(0, 0, 0))
 
 
 def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:

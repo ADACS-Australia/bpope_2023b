@@ -1,9 +1,20 @@
+from itertools import product
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from jaxoplanet.experimental.starry.rotation import R_full, Rdot, axis_to_euler, dotR
+from jax.config import config
+from jaxoplanet.experimental.starry.rotation import (
+    R_full,
+    Rdot,
+    Rl,
+    axis_to_euler,
+    dotR,
+)
 from jaxoplanet.test_utils import assert_allclose
+
+config.update("jax_enable_x64", True)
 
 
 @pytest.mark.parametrize("l_max", [4, 3, 2, 1, 0])
@@ -126,6 +137,20 @@ def test_u1u2_null_grad(u1=0.0, u2=0.0, u3=1.0):
         return axis_to_euler(u1, u2, u3, theta)[1]
 
     assert ~jax.numpy.isnan(jax.grad(grad_beta)(u1, u2, u3, np.pi / 4))
+
+
+@pytest.mark.parametrize("l_max", list(range(17)))
+def test_Rl_grad(l_max):
+    Rl_func = Rl(l_max)
+
+    alpha = [0.0, np.pi / 4, np.pi / 2, np.pi, 2 * np.pi]
+    beta = [-np.pi / 2, 0.0, np.pi / 4, np.pi / 2]
+    gamma = [0.0, np.pi / 4, np.pi / 2, np.pi, 2 * np.pi]
+
+    for a, b, g in product(alpha, beta, gamma):
+        for n in range(3):
+            gr = jax.jacfwd(Rl_func, argnums=n)(a, b, g)
+            assert np.all(np.isfinite(gr))
 
 
 def R_symbolic(lmax, u, theta):
