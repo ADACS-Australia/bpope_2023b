@@ -30,6 +30,7 @@ def test_R_full(l_max, u):
 
 @pytest.mark.parametrize("l_max", [10, 7, 5, 4])
 @pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.1, 0)])
+# @pytest.mark.parametrize("u", [(1, 1, 1)])
 def test_compare_starry_R_full(l_max, u):
     """Comparison test with starry full rotation matrix
     obtained from OpsYlm.dotR"""
@@ -71,10 +72,8 @@ def test_compare_R_full_with_starry_tensordotRz(l_max):
 
     m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
     expected = m.tensordotRz(M, theta)
-
     R_theta = R_full(l_max, [0, 0, 1])(theta)
     calc = jax.vmap(jnp.dot, in_axes=(0, 0))(M, R_theta)
-
     assert_allclose(calc, expected)
 
 
@@ -132,11 +131,9 @@ def test_compare_dotR_with_starry_tensordotRz(l_max):
 
 def test_u1u2_null_grad(u1=0.0, u2=0.0, u3=1.0):
     """Test gradient of axis_to_euler against nan in jnp.where"""
-
-    def grad_beta(u1, u2, u3, theta):
-        return axis_to_euler(u1, u2, u3, theta)[1]
-
-    assert ~jax.numpy.isnan(jax.grad(grad_beta)(u1, u2, u3, np.pi / 4))
+    for n in range(4):
+        g = jax.jacfwd(axis_to_euler, argnums=n)(u1, u2, u3, np.pi / 4)
+        assert np.all(np.isfinite(g))
 
 
 @pytest.mark.parametrize("l_max", list(range(17)))
@@ -243,7 +240,7 @@ def R_symbolic(lmax, u, theta):
     def RAxisAngle(l, u1, u2, u3, theta):
         """Axis-angle rotation matrix."""
         # Numerical tolerance
-        tol = 1e-16
+        tol = np.finfo(np.float64).eps * 10
         if theta == 0:
             theta = tol
         if u1 == 0 and u2 == 0:
