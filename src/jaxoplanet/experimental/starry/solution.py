@@ -114,7 +114,7 @@ def p_integral(order: int, l_max: int, b: Array, r: Array, kappa0: Array) -> Arr
                 cond = jnp.less(omz2, 10 * jnp.finfo(omz2.dtype).eps)
                 omz2 = jnp.where(cond, 1, omz2)
                 z2 = jnp.maximum(0, 1 - omz2)
-                result = 2 * r * (r - b * c) * (1 - z2 * jnp.sqrt(z2)) / (3 * omz2)
+                result = 2 * r * (r - b * c) * (1 - z2**1.5) / (3 * omz2)
                 arg.append(jnp.where(cond, 0, result))
 
             elif mu % 2 == 0 and (mu // 2) % 2 == 0:
