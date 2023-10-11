@@ -28,7 +28,7 @@ def test_R_full(l_max, u):
     assert_allclose(calc, expected)
 
 
-@pytest.mark.parametrize("l_max", [10, 7, 5, 4])
+@pytest.mark.parametrize("l_max", [10, 7, 5, 4, 1, 0])
 @pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.1, 0)])
 # @pytest.mark.parametrize("u", [(1, 1, 1)])
 def test_compare_starry_R_full(l_max, u):

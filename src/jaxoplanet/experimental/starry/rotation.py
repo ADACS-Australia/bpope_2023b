@@ -4,10 +4,14 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import lax
 from jax.scipy.linalg import block_diag
 from scipy.special import factorial
 
+from jaxoplanet.experimental.starry.custom_jvp_rules import (
+    zero_safe_arctan2,
+    zero_safe_power,
+    zero_safe_sqrt,
+)
 from jaxoplanet.types import Array
 
 
@@ -31,11 +35,12 @@ def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
     tuple
         the three euler angles in the zyz convention
     """
-    tol = jnp.finfo(jnp.float64).eps * 10
+    tol = jnp.finfo(jax.dtypes.result_type(theta)).eps * 10
     theta = jnp.where(theta == 0, tol, theta)
     u1u2_null = jnp.logical_and(u1 == 0, u2 == 0)
     u1 = jnp.where(u1u2_null, tol, u1)
     u2 = jnp.where(u1u2_null, tol, u2)
+
     cos_theta = jnp.cos(theta)
     sin_theta = jnp.sin(theta)
     P01 = u1 * u2 * (1 - cos_theta) - u3 * sin_theta
@@ -46,37 +51,27 @@ def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
     P21 = u3 * u2 * (1 - cos_theta) + u1 * sin_theta
     P22 = cos_theta + u3 * u3 * (1 - cos_theta)
 
-    norm1 = jnp.sqrt(P20 * P20 + P21 * P21)
-    norm2 = jnp.sqrt(P02 * P02 + P12 * P12)
+    norm1 = zero_safe_sqrt(P20 * P20 + P21 * P21)
+    norm2 = zero_safe_sqrt(P02 * P02 + P12 * P12)
+
+    alpha0 = jnp.arctan2(0.0, 1.0)
+    beta0 = jnp.arctan2(0.0, -1.0)
+    gamma0 = zero_safe_arctan2(P01, P11)
+
+    alpha1 = jnp.arctan2(0.0, 1.0)
+    beta1 = jnp.arctan2(0.0, 1.0)
+    gamma1 = zero_safe_arctan2(-P01, P11)
+
+    alpha2 = zero_safe_arctan2(P12 / norm2, P02 / norm2)
+    beta2 = zero_safe_arctan2(zero_safe_sqrt(1 - P22**2), P22)
+    gamma2 = zero_safe_arctan2(P21 / norm1, -P20 / norm1)
 
     case1 = jnp.logical_and((P22 < -1 + tol), (P22 > -1 - tol))
     case2 = jnp.logical_and((P22 < 1 + tol), (P22 > 1 - tol))
-    case3 = ~(case1 | case2)
 
-    def _case1():
-        # alpha0 = jnp.arctan2(0.0, 1.0)
-        alpha0 = jnp.arctan2(1 + P22, -P22)
-        # beta0 = jnp.arctan2(0.0, -1.0)
-        beta0 = jnp.arctan2(1 + P22, P22)
-        gamma0 = jnp.arctan2(P01, P11)
-        return alpha0, beta0, gamma0
-
-    def _case2():
-        # alpha1 = jnp.arctan2(0.0, 1.0)
-        alpha1 = jnp.arctan2(1 - P22, P22)
-        # beta1 = jnp.arctan2(0.0, 1.0)
-        beta1 = jnp.arctan2(1 - P22, P22)
-        gamma1 = jnp.arctan2(-P01, P11)
-        return alpha1, beta1, gamma1
-
-    def _case3(_):
-        alpha2 = jnp.arctan2(P12 / norm2, P02 / norm2)
-        beta2 = jnp.arctan2(jnp.sqrt(1 - P22**2), P22)
-        gamma2 = jnp.arctan2(P21 / norm1, -P20 / norm1)
-        return alpha2, beta2, gamma2
-
-    alpha, beta, gamma = lax.cond(case1, _case1, _case2)
-    alpha, beta, gamma = lax.cond(case3, _case3, lambda _: (alpha, beta, gamma), 0)
+    alpha = jnp.where(case1, alpha0, jnp.where(case2, alpha1, alpha2))
+    beta = jnp.where(case1, beta0, jnp.where(case2, beta1, beta2))
+    gamma = jnp.where(case1, gamma0, jnp.where(case2, gamma1, gamma2))
 
     return alpha, beta, gamma
 
@@ -95,7 +90,7 @@ def Rl(l: int):
     Array
         rotation matrix
     """
-    tol = 1.0e-16
+    tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
     # U
     U = np.zeros((2 * l + 1, 2 * l + 1), dtype=np.complex_)
     Ud1 = np.ones(2 * l + 1) * 1j
@@ -125,7 +120,7 @@ def Rl(l: int):
             factorial(l - m) * factorial(l + m) * factorial(l - mp) * factorial(l + mp)
         )
         * (-1) ** k
-    ) * mask
+    )
 
     # add tol to elements with zero value in denominator;
     # change the value of corresponding elements in numerator to zero
@@ -141,8 +136,8 @@ def Rl(l: int):
 
         dlm = (
             fac
-            * jnp.cos(beta / 2) ** (2 * l + m - mp - 2 * k)
-            * jnp.sin(beta / 2) ** (-m + mp + 2 * k)
+            * zero_safe_power(jnp.cos(beta / 2), (2 * l + m - mp - 2 * k))
+            * zero_safe_power(jnp.sin(beta / 2), (-m + mp + 2 * k))
         )
 
         dlm = jnp.nansum(dlm, 0)
