@@ -35,7 +35,7 @@ def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
     tuple
         the three euler angles in the zyz convention
     """
-    tol = jnp.finfo(jax.dtypes.result_type(theta)).eps * 10
+    tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
     theta = jnp.where(theta == 0, tol, theta)
     u1u2_null = jnp.logical_and(u1 == 0, u2 == 0)
     u1 = jnp.where(u1u2_null, tol, u1)
