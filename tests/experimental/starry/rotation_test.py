@@ -150,15 +150,13 @@ def test_u1u2_null_grad(u1=0.0, u2=0.0, u3=1.0):
 
 @pytest.mark.parametrize("l_max", list(range(17)))
 def test_Rl_grad(l_max):
-    Rl_func = Rl(l_max)
-
     alpha = [0.0, np.pi / 4, np.pi / 2, np.pi, 2 * np.pi]
     beta = [-np.pi / 2, 0.0, np.pi / 4, np.pi / 2]
     gamma = [0.0, np.pi / 4, np.pi / 2, np.pi, 2 * np.pi]
 
     for a, b, g in product(alpha, beta, gamma):
-        for n in range(3):
-            gr = jax.jacfwd(Rl_func, argnums=n)(a, b, g)
+        for n in range(1, 4):
+            gr = jax.jacfwd(Rl, argnums=n)(l_max, a, b, g)
             assert np.all(np.isfinite(gr))
 
 

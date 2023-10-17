@@ -187,6 +187,12 @@ def Rl(l: int, alpha: float, beta: float, gamma: float):
 
     fac = (numer * mask) / (denom + ~mask * tol)
 
+    # if beta_tol is too small, it may result in nan value when taking
+    # gradient; the following value is tweaked for x64 enabled and
+    # l in range (0, 17)
+    beta_tol = 1.0e-8
+    beta = jnp.where(beta % jnp.pi == 0, beta + beta_tol, beta)
+
     dlm = (
         fac
         * zero_safe_power(jnp.cos(beta / 2), (2 * l + m - mp - 2 * k))
@@ -199,7 +205,34 @@ def Rl(l: int, alpha: float, beta: float, gamma: float):
     return jnp.real(jnp.linalg.solve(U_, Dlm.T) @ U_)
 
 
-def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
+# def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
+#     """Full Wigner rotation matrix of an axis-angle rotation angle theta about vector u
+
+#     Parameters
+#     ----------
+#     l_max : int
+#         maximum order of the spherical harmonics map
+#     u : Array
+#         axis-rotation vector
+
+#     Returns
+#     -------
+#     Callable[[Array], Array]
+#         a jax.vmap function of theta returning the Wigner matrix for this angle
+#     """
+#     Rls = [Rl(l) for l in range(l_max + 1)]
+#     n_max = l_max**2 + 2 * l_max + 1
+
+#     @partial(jnp.vectorize, signature=f"()->({n_max},{n_max})")
+#     def _R(theta: Array) -> Array:
+#         alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
+#         full = block_diag(*[rl(alpha, beta, gamma) for rl in Rls])
+#         return jnp.where(theta != 0, full, jnp.eye(l_max * (l_max + 2) + 1))
+
+#     return _R
+
+
+def R_full(l_max: int, u):
     """Full Wigner rotation matrix of an axis-angle rotation angle theta about vector u
 
     Parameters
@@ -214,13 +247,14 @@ def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
     Callable[[Array], Array]
         a jax.vmap function of theta returning the Wigner matrix for this angle
     """
-    Rls = [Rl(l) for l in range(l_max + 1)]
     n_max = l_max**2 + 2 * l_max + 1
 
+    @jax.jit
     @partial(jnp.vectorize, signature=f"()->({n_max},{n_max})")
     def _R(theta: Array) -> Array:
         alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
-        full = block_diag(*[rl(alpha, beta, gamma) for rl in Rls])
+        c = [Rl(l, alpha, beta, gamma) for l in range(l_max + 1)]
+        full = block_diag(*c)
         return jnp.where(theta != 0, full, jnp.eye(l_max * (l_max + 2) + 1))
 
     return _R
