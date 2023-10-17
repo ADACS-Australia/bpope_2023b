@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import sympy as sm
 from jax.config import config
 from jaxoplanet.experimental.starry.rotation import (
     R_full,
@@ -13,8 +14,19 @@ from jaxoplanet.experimental.starry.rotation import (
     dotR,
 )
 from jaxoplanet.test_utils import assert_allclose
+from sympy.functions.special.tensor_functions import KroneckerDelta
 
 config.update("jax_enable_x64", True)
+
+
+@pytest.mark.parametrize("l_max", list(range(6)))
+@pytest.mark.parametrize("angles", [(0.0, 0.0, 0.0), (np.pi / 4, np.pi / 5, np.pi / 6)])
+def test_Rl(l_max, angles):
+    pytest.importorskip("sympy")
+    alpha, beta, gamma = angles
+    expected = np.array(REuler(l_max, alpha, beta, gamma)).astype(float)
+    calc = Rl(l_max, alpha, beta, gamma)
+    assert_allclose(calc, expected)
 
 
 @pytest.mark.parametrize("l_max", [4, 3, 2, 1, 0])
@@ -294,3 +306,87 @@ def R_symbolic(lmax, u, theta):
         return sm.BlockDiagMatrix(*blocks)
 
     return R(lmax, u, theta)
+
+
+def Dmn(l, m, n, alpha, beta, gamma):
+    """Compute the (m, n) term of the Wigner D matrix."""
+    sumterm = 0
+    # Expression diverges when beta = 0
+    if beta == 0:
+        beta = 1e-16
+    for k in range(l + m + 1):
+        sumterm += (
+            (-1) ** k
+            * sm.cos(beta / 2) ** (2 * l + m - n - 2 * k)
+            * sm.sin(beta / 2) ** (-m + n + 2 * k)
+            / (
+                sm.factorial(k)
+                * sm.factorial(l + m - k)
+                * sm.factorial(l - n - k)
+                * sm.factorial(n - m + k)
+            )
+        )
+    return (
+        sumterm
+        * sm.exp(-sm.I * (alpha * n + gamma * m))
+        * (-1) ** (n + m)
+        * sm.sqrt(
+            sm.factorial(l - m)
+            * sm.factorial(l + m)
+            * sm.factorial(l - n)
+            * sm.factorial(l + n)
+        )
+    )
+
+
+def D(l, alpha, beta, gamma):
+    res = sm.zeros(2 * l + 1, 2 * l + 1)
+    for m in range(-l, l + 1):
+        for n in range(-l, l + 1):
+            res[m + l, n + l] = Dmn(l, n, m, alpha, beta, gamma)
+    return res
+
+
+def Umn(l, m, n):
+    """Compute the (m, n) term of the transformation
+    matrix from complex to real Ylms."""
+    if n < 0:
+        term1 = sm.I
+    elif n == 0:
+        term1 = sm.sqrt(2) / 2
+    else:
+        term1 = 1
+    if (m > 0) and (n < 0) and (n % 2 == 0):
+        term2 = -1
+    elif (m > 0) and (n > 0) and (n % 2 != 0):
+        term2 = -1
+    else:
+        term2 = 1
+    return (
+        term1 * term2 * 1 / sm.sqrt(2) * (KroneckerDelta(m, n) + KroneckerDelta(m, -n))
+    )
+
+
+def U(l):
+    """Compute the U transformation matrix."""
+    res = sm.zeros(2 * l + 1, 2 * l + 1)
+    for m in range(-l, l + 1):
+        for n in range(-l, l + 1):
+            res[m + l, n + l] = Umn(l, m, n)
+    return res
+
+
+def REuler(l, alpha, beta, gamma):
+    """Return the rotation matrix for a single degree `l`."""
+    res = sm.zeros(2 * l + 1, 2 * l + 1)
+    if l == 0:
+        res[0, 0] = 1
+        return res
+    foo = sm.re(U(l).inv() * D(l, alpha, beta, gamma) * U(l))
+    for m in range(2 * l + 1):
+        for n in range(2 * l + 1):
+            if abs(foo[m, n]) < 1e-15:
+                res[m, n] = 0
+            else:
+                res[m, n] = foo[m, n]
+    return res

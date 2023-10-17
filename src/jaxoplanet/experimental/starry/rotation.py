@@ -77,31 +77,94 @@ def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
 
 
 # TODO: type hinting callable
-def Rl(l: int):
-    """Rotation matrix of the spherical harmonics map order l
+# def Rl(l: int):
+#     """Rotation matrix of the spherical harmonics map order l
 
-    Parameters
-    ----------
-    l : int
-        order
+#     Parameters
+#     ----------
+#     l : int
+#         order
 
-    Returns
-    -------
-    Array
-        rotation matrix
-    """
+#     Returns
+#     -------
+#     Array
+#         rotation matrix
+#     """
+#     tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
+#     # U
+#     U = np.zeros((2 * l + 1, 2 * l + 1), dtype=np.complex_)
+#     Ud1 = np.ones(2 * l + 1) * 1j
+#     Ud1[l + 1 : :] = (-1) ** np.arange(1, l + 1)
+#     np.fill_diagonal(U, Ud1)
+#     np.fill_diagonal(np.fliplr(U), -1j * Ud1)
+#     U[l, l] = np.sqrt(2)
+#     U *= 1 / np.sqrt(2)
+#     U = jnp.array(U)
+
+#     # dlm
+#     m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
+#     k = np.arange(0, 2 * l + 2)[:, None, None]
+
+#     denom = (
+#         factorial(k)
+#         * factorial(l + m - k)
+#         * factorial(l - mp - k)
+#         * factorial(mp - m + k)
+#     )
+
+#     mask = denom != 0
+
+#     numer = (
+#         jnp.power(-1 + 0j, mp + m)
+#         * jnp.sqrt(
+#             factorial(l - m) * factorial(l + m) * factorial(l - mp) * factorial(l + mp)
+#         )
+#         * (-1) ** k
+#     )
+
+#     # add tol to elements with zero value in denominator;
+#     # change the value of corresponding elements in numerator to zero
+#     fac = (numer * mask) / (denom + ~mask * tol)
+
+#     @jax.jit
+#     def _Rl(alpha: float, beta: float, gamma: float):
+#         # if beta_tol is too small, it may result in nan value when taking
+#         # gradient; the following value is tweaked for x64 enabled and
+#         # l in range (0, 17)
+#         beta_tol = 1.0e-8
+#         beta = jnp.where(beta % jnp.pi == 0, beta + beta_tol, beta)
+
+#         dlm = (
+#             fac
+#             * zero_safe_power(jnp.cos(beta / 2), (2 * l + m - mp - 2 * k))
+#             * zero_safe_power(jnp.sin(beta / 2), (-m + mp + 2 * k))
+#         )
+
+#         dlm = jnp.nansum(dlm, 0)
+#         Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
+
+#         return jnp.real(jnp.linalg.solve(U, Dlm.T) @ U)
+
+#     return _Rl
+
+
+@partial(jax.jit, static_argnames=("l"))
+def Rl(l: int, alpha: float, beta: float, gamma: float):
     tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
-    # U
-    U = np.zeros((2 * l + 1, 2 * l + 1), dtype=np.complex_)
-    Ud1 = np.ones(2 * l + 1) * 1j
-    Ud1[l + 1 : :] = (-1) ** np.arange(1, l + 1)
-    np.fill_diagonal(U, Ud1)
-    np.fill_diagonal(np.fliplr(U), -1j * Ud1)
-    U[l, l] = np.sqrt(2)
-    U *= 1 / np.sqrt(2)
-    U = jnp.array(U)
 
-    # dlm
+    # U
+    U = jnp.zeros((2 * l + 1, 2 * l + 1), dtype=jnp.complex_)
+    Ud1 = jnp.ones(2 * l + 1) * 1j
+    indices = jnp.arange(l + 1, 2 * l + 1)
+    values = (-1) ** jnp.arange(1, l + 1)
+    Ud1 = Ud1.at[indices].set(values)
+    u_ind = jnp.arange(2 * l + 1)
+    U = U.at[u_ind, u_ind].set(Ud1)
+    U = U.at[u_ind, -u_ind - 1].set(-1j * Ud1)
+    U = U.at[l, l].set(jnp.sqrt(2))
+    U_ = U * 1 / jnp.sqrt(2)
+
+    # Dlm
     m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
     k = np.arange(0, 2 * l + 2)[:, None, None]
 
@@ -122,30 +185,18 @@ def Rl(l: int):
         * (-1) ** k
     )
 
-    # add tol to elements with zero value in denominator;
-    # change the value of corresponding elements in numerator to zero
     fac = (numer * mask) / (denom + ~mask * tol)
 
-    @jax.jit
-    def _Rl(alpha: float, beta: float, gamma: float):
-        # if beta_tol is too small, it may result in nan value when taking
-        # gradient; the following value is tweaked for x64 enabled and
-        # l in range (0, 17)
-        beta_tol = 1.0e-8
-        beta = jnp.where(beta % jnp.pi == 0, beta + beta_tol, beta)
+    dlm = (
+        fac
+        * zero_safe_power(jnp.cos(beta / 2), (2 * l + m - mp - 2 * k))
+        * zero_safe_power(jnp.sin(beta / 2), (-m + mp + 2 * k))
+    )
 
-        dlm = (
-            fac
-            * zero_safe_power(jnp.cos(beta / 2), (2 * l + m - mp - 2 * k))
-            * zero_safe_power(jnp.sin(beta / 2), (-m + mp + 2 * k))
-        )
+    dlm = jnp.nansum(dlm, 0)
+    Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
 
-        dlm = jnp.nansum(dlm, 0)
-        Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
-
-        return jnp.real(jnp.linalg.solve(U, Dlm.T) @ U)
-
-    return _Rl
+    return jnp.real(jnp.linalg.solve(U_, Dlm.T) @ U_)
 
 
 def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
