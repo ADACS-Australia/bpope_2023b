@@ -15,7 +15,7 @@ from jaxoplanet.experimental.starry.custom_jvp_rules import (
 from jaxoplanet.types import Array
 
 
-@jax.jit
+# @jax.jit
 def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
     """Returns euler angles (zxz convention) associated to a given axis-angle rotation
 
@@ -148,7 +148,7 @@ def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
 #     return _Rl
 
 
-@partial(jax.jit, static_argnames=("l"))
+# @partial(jax.jit, static_argnames=("l"))
 def Rl(l: int, alpha: float, beta: float, gamma: float):
     tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
 
@@ -247,10 +247,10 @@ def R_full(l_max: int, u):
     Callable[[Array], Array]
         a jax.vmap function of theta returning the Wigner matrix for this angle
     """
-    n_max = l_max**2 + 2 * l_max + 1
+    l_max**2 + 2 * l_max + 1
 
-    @jax.jit
-    @partial(jnp.vectorize, signature=f"()->({n_max},{n_max})")
+    # @jax.jit
+    # @partial(jnp.vectorize, signature=f"()->({n_max},{n_max})")
     def _R(theta: Array) -> Array:
         alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
         c = [Rl(l, alpha, beta, gamma) for l in range(l_max + 1)]

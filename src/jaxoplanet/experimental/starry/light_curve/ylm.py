@@ -61,7 +61,15 @@ def design_matrix(
     obl: float,
     order=10,
 ) -> Callable:
-    n_max = (l_max + 1) ** 2
+    (l_max + 1) ** 2
+
+    def _rotation_vector():
+        return rT_solution_vector(l_max) @ A1(l_max)
+
+    rTA1 = _rotation_vector()
+    # print("rTA1: ", rTA1)
+
+    A_ = A(l_max)
 
     def _get_R_frames() -> Tuple[Array, Array]:
         cos_obl = jnp.cos(obl)
@@ -85,8 +93,11 @@ def design_matrix(
 
         return R_sky, R_polar
 
+    R_sky, R_polar = _get_R_frames()
+
     # @jax.jit
-    @partial(jnp.vectorize, signature=f"(),(),(),(),()->({n_max})")
+    @jax.vmap
+    # @partial(jnp.vectorize, signature=f"(),(),(),(),()->({n_max})")
     def _X(b: Array, z: Array, r: Array, theta: Array, theta_z: Array):
         # occultation mask
         cond_rot = (b >= (1.0 + r)) | (z <= 0.0) | (r == 0.0)
@@ -94,14 +105,14 @@ def design_matrix(
 
         sT = solution_vector(l_max, order=order)(b, r)
         # sT = solution_vector(l_max, b, r, order=order)
-        A_ = A(l_max)
+        # A_ = A(l_max)
         R_z = R_full(l_max, [0, 0, 1])(theta_z)
         sTAR = sT @ A_ @ R_z
-        rTA1 = rT_solution_vector(l_max) @ A1(l_max)
+        # rTA1 = rT_solution_vector(l_max) @ A1(l_max)
 
         sTAR_ = jnp.where(~cond_rot, sTAR, rTA1)
 
-        R_sky, R_polar = _get_R_frames()
+        # R_sky, R_polar = _get_R_frames()
 
         R_cor = R_full(l_max, [0, 0, 1])(theta)
 
@@ -123,5 +134,9 @@ def light_curve(
     y: Array,
     order=10,
 ):
-    x = design_matrix(l_max, inc, obl, order=order)(b, z, r, theta, theta_z)
+    x_func = design_matrix(l_max, inc, obl, order=order)
+    # opt_x_func = jax.jit(jax.vmap(x_func))
+    x = x_func(b, z, r, theta, theta_z)
+    # x = opt_x_func(b, z, r, theta, theta_z)
+    # return opt_x_func
     return x @ y

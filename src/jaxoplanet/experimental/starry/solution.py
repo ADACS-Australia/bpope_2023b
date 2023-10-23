@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Callable, Tuple
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.special import gamma, roots_legendre
@@ -12,7 +13,7 @@ from jaxoplanet.types import Array
 def solution_vector(l_max: int, order: int = 20) -> Callable[[Array, Array], Array]:
     n_max = l_max**2 + 2 * l_max + 1
 
-    # @jax.jit
+    @jax.jit
     @partial(jnp.vectorize, signature=f"(),()->({n_max})")
     def impl(b: Array, r: Array) -> Array:
         b = jnp.abs(b)
