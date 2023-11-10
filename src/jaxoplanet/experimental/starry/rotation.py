@@ -15,7 +15,6 @@ from jaxoplanet.experimental.starry.custom_jvp_rules import (
 from jaxoplanet.types import Array
 
 
-# @jax.jit
 def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
     """Returns euler angles (zxz convention) associated to a given axis-angle rotation
 
@@ -77,78 +76,81 @@ def axis_to_euler(u1: float, u2: float, u3: float, theta: float):
 
 
 # TODO: type hinting callable
-# def Rl(l: int):
-#     """Rotation matrix of the spherical harmonics map order l
+### method 1: Rl
+def Rl(l: int):
+    """Rotation matrix of the spherical harmonics map order l
 
-#     Parameters
-#     ----------
-#     l : int
-#         order
+    Parameters
+    ----------
+    l : int
+        order
 
-#     Returns
-#     -------
-#     Array
-#         rotation matrix
-#     """
-#     tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
-#     # U
-#     U = np.zeros((2 * l + 1, 2 * l + 1), dtype=np.complex_)
-#     Ud1 = np.ones(2 * l + 1) * 1j
-#     Ud1[l + 1 : :] = (-1) ** np.arange(1, l + 1)
-#     np.fill_diagonal(U, Ud1)
-#     np.fill_diagonal(np.fliplr(U), -1j * Ud1)
-#     U[l, l] = np.sqrt(2)
-#     U *= 1 / np.sqrt(2)
-#     U = jnp.array(U)
+    Returns
+    -------
+    Array
+        rotation matrix
+    """
+    tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
+    # U
+    U = np.zeros((2 * l + 1, 2 * l + 1), dtype=np.complex_)
+    Ud1 = np.ones(2 * l + 1) * 1j
+    Ud1[l + 1 : :] = (-1) ** np.arange(1, l + 1)
+    np.fill_diagonal(U, Ud1)
+    np.fill_diagonal(np.fliplr(U), -1j * Ud1)
+    U[l, l] = np.sqrt(2)
+    U *= 1 / np.sqrt(2)
+    U = jnp.array(U)
 
-#     # dlm
-#     m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
-#     k = np.arange(0, 2 * l + 2)[:, None, None]
+    # dlm
+    m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
+    k = np.arange(0, 2 * l + 2)[:, None, None]
 
-#     denom = (
-#         factorial(k)
-#         * factorial(l + m - k)
-#         * factorial(l - mp - k)
-#         * factorial(mp - m + k)
-#     )
+    denom = (
+        factorial(k)
+        * factorial(l + m - k)
+        * factorial(l - mp - k)
+        * factorial(mp - m + k)
+    )
 
-#     mask = denom != 0
+    mask = denom != 0
 
-#     numer = (
-#         jnp.power(-1 + 0j, mp + m)
-#         * jnp.sqrt(
-#             factorial(l - m) * factorial(l + m) * factorial(l - mp) * factorial(l + mp)
-#         )
-#         * (-1) ** k
-#     )
+    numer = (
+        jnp.power(-1 + 0j, mp + m)
+        * jnp.sqrt(
+            factorial(l - m) * factorial(l + m) * factorial(l - mp) * factorial(l + mp)
+        )
+        * (-1) ** k
+    )
 
-#     # add tol to elements with zero value in denominator;
-#     # change the value of corresponding elements in numerator to zero
-#     fac = (numer * mask) / (denom + ~mask * tol)
+    # add tol to elements with zero value in denominator;
+    # change the value of corresponding elements in numerator to zero
+    fac = (numer * mask) / (denom + ~mask * tol)
 
-#     @jax.jit
-#     def _Rl(alpha: float, beta: float, gamma: float):
-#         # if beta_tol is too small, it may result in nan value when taking
-#         # gradient; the following value is tweaked for x64 enabled and
-#         # l in range (0, 17)
-#         beta_tol = 1.0e-8
-#         beta = jnp.where(beta % jnp.pi == 0, beta + beta_tol, beta)
+    @jax.jit
+    def _Rl(alpha: float, beta: float, gamma: float):
+        # if beta_tol is too small, it may result in nan value when taking
+        # gradient; the following value is tweaked for x64 enabled and
+        # l in range (0, 17)
+        beta_tol = 1.0e-8
+        beta = jnp.where(beta % jnp.pi == 0, beta + beta_tol, beta)
 
-#         dlm = (
-#             fac
-#             * zero_safe_power(jnp.cos(beta / 2), (2 * l + m - mp - 2 * k))
-#             * zero_safe_power(jnp.sin(beta / 2), (-m + mp + 2 * k))
-#         )
+        dlm = (
+            fac
+            * zero_safe_power(jnp.cos(beta / 2), (2 * l + m - mp - 2 * k))
+            * zero_safe_power(jnp.sin(beta / 2), (-m + mp + 2 * k))
+        )
 
-#         dlm = jnp.nansum(dlm, 0)
-#         Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
+        dlm = jnp.nansum(dlm, 0)
+        Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
 
-#         return jnp.real(jnp.linalg.solve(U, Dlm.T) @ U)
+        return jnp.real(jnp.linalg.solve(U, Dlm.T) @ U)
 
-#     return _Rl
+    return _Rl
 
 
-# @partial(jax.jit, static_argnames=("l"))
+"""
+### method 2: Rl
+@partial(jax.jit, static_argnames=("l"))
 def Rl(l: int, alpha: float, beta: float, gamma: float):
     tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
 
@@ -163,7 +165,7 @@ def Rl(l: int, alpha: float, beta: float, gamma: float):
     U = U.at[u_ind, -u_ind - 1].set(-1j * Ud1)
     U = U.at[l, l].set(jnp.sqrt(2))
     U_ = U * 1 / jnp.sqrt(2)
-
+    # print("type U: ", type(U_))
     # Dlm
     m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
     k = np.arange(0, 2 * l + 2)[:, None, None]
@@ -203,35 +205,39 @@ def Rl(l: int, alpha: float, beta: float, gamma: float):
     Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
 
     return jnp.real(jnp.linalg.solve(U_, Dlm.T) @ U_)
+"""
 
 
-# def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
-#     """Full Wigner rotation matrix of an axis-angle rotation angle theta about vector u
+### method 1: R_full
+def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
+    """Full Wigner rotation matrix of an axis-angle rotation angle theta about vector u
 
-#     Parameters
-#     ----------
-#     l_max : int
-#         maximum order of the spherical harmonics map
-#     u : Array
-#         axis-rotation vector
+    Parameters
+    ----------
+    l_max : int
+        maximum order of the spherical harmonics map
+    u : Array
+        axis-rotation vector
 
-#     Returns
-#     -------
-#     Callable[[Array], Array]
-#         a jax.vmap function of theta returning the Wigner matrix for this angle
-#     """
-#     Rls = [Rl(l) for l in range(l_max + 1)]
-#     n_max = l_max**2 + 2 * l_max + 1
+    Returns
+    -------
+    Callable[[Array], Array]
+        a jax.vmap function of theta returning the Wigner matrix for this angle
+    """
+    Rls = [Rl(l) for l in range(l_max + 1)]
+    n_max = l_max**2 + 2 * l_max + 1
 
-#     @partial(jnp.vectorize, signature=f"()->({n_max},{n_max})")
-#     def _R(theta: Array) -> Array:
-#         alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
-#         full = block_diag(*[rl(alpha, beta, gamma) for rl in Rls])
-#         return jnp.where(theta != 0, full, jnp.eye(l_max * (l_max + 2) + 1))
+    @partial(jnp.vectorize, signature=f"()->({n_max},{n_max})")
+    def _R(theta: Array) -> Array:
+        alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
+        full = block_diag(*[rl(alpha, beta, gamma) for rl in Rls])
+        return jnp.where(theta != 0, full, jnp.eye(l_max * (l_max + 2) + 1))
 
-#     return _R
+    return _R
 
 
+'''
+### method 2: R_full
 def R_full(l_max: int, u):
     """Full Wigner rotation matrix of an axis-angle rotation angle theta about vector u
 
@@ -247,9 +253,8 @@ def R_full(l_max: int, u):
     Callable[[Array], Array]
         a jax.vmap function of theta returning the Wigner matrix for this angle
     """
-    l_max**2 + 2 * l_max + 1
+    n_max = l_max**2 + 2 * l_max + 1
 
-    # @jax.jit
     # @partial(jnp.vectorize, signature=f"()->({n_max},{n_max})")
     def _R(theta: Array) -> Array:
         alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
@@ -258,8 +263,10 @@ def R_full(l_max: int, u):
         return jnp.where(theta != 0, full, jnp.eye(l_max * (l_max + 2) + 1))
 
     return _R
+'''
 
 
+### method 1: Rdot
 def Rdot(l_max: int, u: Array) -> Callable[[Array], Array]:
     """Dot product R@y of the rotation matrix R with a vector y
 
@@ -290,6 +297,7 @@ def Rdot(l_max: int, u: Array) -> Callable[[Array], Array]:
     return R
 
 
+### method 1: dotR
 def dotR(l_max: int, u: Array) -> Callable[[Array], Array]:
     """Dot product M@R of a matrix M with the rotation matrix R
 
@@ -307,8 +315,8 @@ def dotR(l_max: int, u: Array) -> Callable[[Array], Array]:
         - M is a matrix (Array)
         - theta is the rotation angle in radians
     """
-    Rls = [Rl(l) for l in range(l_max + 1)]
     n_max = l_max**2 + 2 * l_max + 1
+    Rls = [Rl(l) for l in range(l_max + 1)]
 
     @partial(jnp.vectorize, signature=f"({n_max}),()->({n_max})")
     def R(M: Array, theta: Array) -> Array:

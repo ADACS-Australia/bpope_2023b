@@ -37,12 +37,11 @@ def test_compare_starry_design_matrix(l_max, n):
         expect = m.ops.X(theta, xo, yo, zo, ro, inc, obl, m._u, m._f) * (
             0.5 * np.sqrt(np.pi)
         )
-        # print("expect: ", expect)
 
     # prepare inputs
     bo = zero_safe_sqrt(xo**2 + yo**2)
     theta_z = zero_safe_arctan2(xo, yo)
-
+    # ro_ = jnp.broadcast_to(ro, bo.shape)
     calc = design_matrix(l_max, inc, obl)(bo, zo, ro, theta, theta_z)
     assert_allclose(expect, calc)
 
@@ -77,7 +76,7 @@ def test_compare_starry_light_curve(l_max, n):
     # prepare inputs
     bo = zero_safe_sqrt(xo**2 + yo**2)
     theta_z = zero_safe_arctan2(xo, yo)
-
+    # ro_ = jnp.broadcast_to(ro, bo.shape)
     calc = light_curve(l_max, inc, obl, bo, zo, ro, theta, theta_z, y)
     assert_allclose(calc, expect)
 
@@ -97,18 +96,20 @@ def test_grad(theta, xyz, ro):
     y[0] = 1.0
 
     xo, yo, zo = xyz
-
-    bo = zero_safe_sqrt(xo**2 + yo**2)
-    theta_z = zero_safe_arctan2(xo, yo)
-
+    xo_ = jnp.atleast_1d(xo)
+    yo_ = jnp.atleast_1d(yo)
+    zo_ = jnp.atleast_1d(zo)
+    bo = zero_safe_sqrt(xo_**2 + yo_**2)
+    theta_z = zero_safe_arctan2(xo_, yo_)
+    ro_ = jnp.atleast_1d(ro)
     for n in range(1, 9):
-        lc_grad = jax.grad(light_curve, argnums=n)(
+        lc_grad = jax.jacfwd(light_curve, argnums=n)(
             l_max,
             inc,
             obl,
             bo,
-            zo,
-            ro,
+            zo_,
+            ro_,
             theta,
             theta_z,
             y,

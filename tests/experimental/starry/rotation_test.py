@@ -25,7 +25,7 @@ def test_Rl(l_max, angles):
     pytest.importorskip("sympy")
     alpha, beta, gamma = angles
     expected = np.array(REuler(l_max, alpha, beta, gamma)).astype(float)
-    calc = Rl(l_max, alpha, beta, gamma)
+    calc = Rl(l_max)(alpha, beta, gamma)
     assert_allclose(calc, expected)
 
 
@@ -42,7 +42,6 @@ def test_R_full(l_max, u):
 
 @pytest.mark.parametrize("l_max", [10, 7, 5, 4, 1, 0])
 @pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.1, 0)])
-# @pytest.mark.parametrize("u", [(1, 1, 1)])
 def test_compare_starry_R_full(l_max, u):
     """Comparison test with starry full rotation matrix
     obtained from OpsYlm.dotR"""
@@ -112,13 +111,11 @@ def test_compare_dotR_with_starry_dotR(l_max, u):
     n_phase = 100
     M = np.random.rand(n_phase, n_max)
 
-    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
+    m = starry._core.core.OpsYlm(l_max, 0, 0, None)
     expected = m.dotR(M, *u, theta)
 
-    theta_ = jnp.broadcast_to(theta, (n_phase,))
     dotr_func = dotR(l_max, u)
-    calc = jax.vmap(dotr_func)(M, theta_)
-
+    calc = dotr_func(M, theta)
     assert_allclose(calc, expected)
 
 
@@ -133,11 +130,11 @@ def test_compare_dotR_with_starry_tensordotRz(l_max):
     n_max = l_max**2 + 2 * l_max + 1
     M = np.random.rand(n_phase, n_max)
 
-    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
+    m = starry._core.core.OpsYlm(l_max, 0, 0, None)
     expected = m.tensordotRz(M, theta)
 
     dotr_func = dotR(l_max, u)
-    calc = jax.vmap(dotr_func)(M, theta)
+    calc = dotr_func(M, theta)
     assert_allclose(calc, expected)
 
 
@@ -155,8 +152,9 @@ def test_Rl_grad(l_max):
     gamma = [0.0, np.pi / 4, np.pi / 2, np.pi, 2 * np.pi]
 
     for a, b, g in product(alpha, beta, gamma):
-        for n in range(1, 4):
-            gr = jax.jacfwd(Rl, argnums=n)(l_max, a, b, g)
+        for n in range(3):
+            rl_func = Rl(l_max)
+            gr = jax.jacfwd(rl_func, argnums=n)(a, b, g)
             assert np.all(np.isfinite(gr))
 
 

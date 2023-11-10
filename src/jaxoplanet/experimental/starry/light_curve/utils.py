@@ -2,58 +2,36 @@ from typing import NamedTuple, Optional
 
 import jax.numpy as jnp
 
-from jaxoplanet.experimental.starry.rotation import R_full
 from jaxoplanet.types import Array, Scalar
 
+"""
+def get_R_frames(l_max: int, inc: float, obl: float) -> Tuple[Array, Array]:
 
-def right_project(l_max: int, M: Array, inc: float, obl: float, theta: Array):
-    r"""Apply the projection operator on the right.
+        cos_obl = jnp.cos(obl)
+        sin_obl = jnp.sin(obl)
 
-    Specifically, this method returns the dot product :math:`M \cdot R`,
-    where ``M`` is an input matrix and ``R`` is the Wigner rotation matrix
-    that transforms a spherical harmonic coefficient vector in the
-    input frame to a vector in the observer's frame. `inc`, `obl` and `theta`
-    are in radians.
-    """
+        # rotation axes
+        uo = [-cos_obl, -sin_obl, 0.0]
+        uz = [0, 0, 1]
+        ux = [1, 0, 0]
+        print("type ux: ", type(ux))
+        # jax.debug.print("🤯 {ux} 🤯", ux=ux)
+        # rotate angles
+        a1 = -((0.5 * jnp.pi) - inc)
+        a2 = obl
+        a3 = -0.5 * jnp.pi
 
-    theta_ = jnp.atleast_1d(theta)
+        # rotate to the sky frame
+        R_sky = R_full(l_max, uo)(a1) @ R_full(l_max, uz)(a2) @ R_full(l_max, ux)(a3)
 
-    cos_obl = jnp.cos(obl)
-    sin_obl = jnp.sin(obl)
-
-    # rotation axes
-    uo = [-cos_obl, -sin_obl, 0.0]
-    uz = [0, 0, 1]
-    ux = [1, 0, 0]
-
-    # rotate angles
-    a1 = -((0.5 * jnp.pi) - inc)
-    a2 = obl
-    a3 = -0.5 * jnp.pi
-
-    # Rotate to the sky frame
-    R_sky = R_full(l_max, uo)(a1) @ R_full(l_max, uz)(a2) @ R_full(l_max, ux)(a3)
-    M_sky = M @ R_sky
-
-    # Rotate to the correct phase
-    # if theta_.shape[0] == 1:
-    #     theta_b = jnp.broadcast_to(theta_, (M.shape[0],))
-    #     R_theta = R_full(l_max, uz)(theta_b)
-    # if theta_.shape[0] == M.shape[0]:
-    #     R_theta = R_full(l_max, uz)(theta_)
-    R_theta = R_full(l_max, uz)(theta_)
-    # TODO: raise error for all other cases
-    # print("R_theta shape: ", R_theta.shape)
-    # M_cor = jax.vmap(jnp.dot, in_axes=(0, 0))(M_sky, R_theta)
-    # print("M sky shape: ", M_sky.shape)
-    # M_cor_ = jnp.squeeze(M_cor)
-    # print("M_cor shape: ", M_cor_.shape)
-    M_cor = jnp.matmul(M_sky[:, None, :], R_theta).squeeze(1)
-    print("shape of M_cor: ", M_cor.shape)
-    # Rotate to the polar frame
-    M_ = (M_cor @ R_full(l_max, ux)(0.5 * jnp.pi)).squeeze()
-    print("M_ shape: ", M_.shape)
-    return M_
+        # polar frame
+        R_p_func = R_full(l_max, ux)
+        print("rp func type: ", type(R_p_func))
+        R_polar = R_full(l_max, ux)(0.5 * jnp.pi)
+        print("rp type: ", type(R_polar))
+        # jax.debug.print("🤯 {dr} 🤯", dr=R_polar.shape)
+        return R_sky, R_polar
+"""
 
 
 class RotationPhase(NamedTuple):
