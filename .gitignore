@@ -4,7 +4,6 @@
 .nox
 .coverage
 .coverage.*
-/*.ipynb
 build
 /*.png
 .venv
@@ -13,4 +12,3 @@ poetry.lock
 .*_cache
 __pycache__
 .DS_Store
-
