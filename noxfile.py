@@ -19,6 +19,7 @@ def test(session, x64):
 @nox.session(python=ALL_PYTHON_VS)
 def comparison(session):
     session.install(".[test,test-math,comparison]", "numpy<1.22")
+    session.run("python", "-c", "import numpy; print(numpy.__version__)")
     session.run("python", "-c", "import starry")
     session.run("python", "-c", "import theano")
     session.run(
