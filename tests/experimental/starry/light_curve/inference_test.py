@@ -7,7 +7,6 @@ import numpy as np
 import pytest
 from jaxoplanet.experimental.starry.light_curve.inference import (
     cast,
-    design_matrix,
     get_lnlike,
     get_lnlike_woodbury,
     lnlike,
@@ -16,39 +15,9 @@ from jaxoplanet.experimental.starry.light_curve.inference import (
     set_prior,
     solve,
 )
-from jaxoplanet.experimental.starry.light_curve.ylm import light_curve
+from jaxoplanet.experimental.starry.light_curve.ylm import design_matrix, light_curve
 from jaxoplanet.test_utils import assert_allclose
 from scipy.stats import multivariate_normal
-
-
-@pytest.mark.parametrize("l_max", [5, 4, 3, 2, 1, 0])
-def test_compare_starry_design_matrix(l_max):
-    starry = pytest.importorskip("starry")
-    starry.config.lazy = False
-    theano = pytest.importorskip("theano")
-    theano.config.gcc__cxxflags += " -fexceptions"
-
-    ro = 0.1
-    xo = jnp.linspace(0, ro + 2, 500)
-    yo = jnp.zeros(500)
-    zo = jnp.linspace(0, ro + 2, 500)
-    inc = 0
-    obl = np.pi / 2
-    theta = jnp.linspace(0, np.pi, 500)
-    n_max = (l_max + 1) ** 2
-    y = np.random.uniform(0, 1, n_max)
-    y[0] = 1.0
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        m = starry.Map(l_max)
-        expect = m.ops.X(theta, xo, yo, zo, ro, inc, obl, m._u, m._f) * (
-            0.5 * np.sqrt(np.pi)
-        )
-
-    calc = design_matrix(l_max, inc, obl, y, xo, yo, zo, ro, theta)
-
-    assert_allclose(calc, expect)
 
 
 @pytest.fixture(autouse=True)
@@ -67,13 +36,15 @@ def data():
     y[0] = 1.0
     kwargs = dict(l_max=l_max, obl=obl, y=y, xo=xo, yo=yo, zo=zo, ro=ro, theta=theta)
 
-    true_flux = light_curve(l_max, inc, obl, y, xo, yo, zo, ro, theta)
+    true_flux = light_curve(l_max, inc, obl, xo, yo, zo, ro, theta, y)
 
     sigma = 1e-5
     np.random.seed(1)
     syn_flux = true_flux + np.random.randn(len(theta)) * sigma
 
-    X = design_matrix(l_max, inc, obl, y, xo, yo, zo, ro, theta)
+    # X = design_matrix(l_max, inc, obl, y, xo, yo, zo, ro, theta)
+    x_func = design_matrix(l_max, inc, obl)
+    X = x_func(xo, yo, zo, ro, theta)
 
     return (l_max, n_max, syn_flux, sigma, y, X, kwargs)
 
@@ -143,7 +114,6 @@ def test_map_solve_scalar(data):
 @pytest.mark.parametrize("L,C,woodbury", lnlike_inputs)
 def test_lnlike(L, C, woodbury, data):
     """Test the log marginal likelihood method."""
-
     l_max, n_max, syn_flux, sigma, _, _, kwargs = data
 
     # Place a generous prior on the map coefficients
@@ -179,7 +149,10 @@ def test_lnlike(L, C, woodbury, data):
     incs = [0, np.pi / 12, np.pi / 6, np.pi / 4, np.pi / 3, np.pi / 2]
     ll = np.zeros_like(incs, dtype=float)
     for i, inc in enumerate(incs):
-        X = design_matrix(inc=inc, **kwargs)
+        x_func = design_matrix(l_max, inc, obl=kwargs["obl"])
+        X = x_func(
+            kwargs["xo"], kwargs["yo"], kwargs["zo"], kwargs["ro"], kwargs["theta"]
+        )
         if woodbury is True:
             lndetL = cast([calc_L[3]])
             ll[i] = get_lnlike_woodbury(
@@ -210,7 +183,10 @@ def test_lnlike_scalar(woodbury, data):
     incs = [0, np.pi / 12, np.pi / 6, np.pi / 4, np.pi / 3, np.pi / 2]
     ll = np.zeros_like(incs, dtype=float)
     for i, inc in enumerate(incs):
-        X = design_matrix(inc=inc, **kwargs)
+        x_func = design_matrix(l_max, inc, obl=kwargs["obl"])
+        X = x_func(
+            kwargs["xo"], kwargs["yo"], kwargs["zo"], kwargs["ro"], kwargs["theta"]
+        )
         if woodbury is True:
             ll[i] = get_lnlike_woodbury(
                 X, syn_flux, calc_C[2], calc_mu, LInv, calc_C[3], lndetL

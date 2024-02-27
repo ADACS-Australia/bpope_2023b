@@ -27,7 +27,6 @@ def light_curve(
     y: Array,
     order=10,
 ):
-    # R_sky, R_polar = get_R_frames(l_max, inc, obl)
     x_func = design_matrix(l_max, inc, obl, order=order)
     x = x_func(xo, yo, zo, r, theta)
     return x @ y

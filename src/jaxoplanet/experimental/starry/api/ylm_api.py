@@ -49,8 +49,6 @@ class YlmLightCurve(NamedTuple):
         ro = orbit.radius / r_star
 
         theta = phase.phase_curve(t)
-        # b = zero_safe_sqrt(xo_**2 + yo_**2)
-        # theta_z = zero_safe_arctan2(xo_, yo_)
 
         # lc_func = partial(light_curve, self.l_max, self.inc, self.obl, self.y)
         lc = light_curve(

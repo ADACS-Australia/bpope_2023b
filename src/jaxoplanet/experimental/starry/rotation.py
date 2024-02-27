@@ -148,66 +148,6 @@ def Rl(l: int):
     return _Rl
 
 
-"""
-### method 2: Rl
-@partial(jax.jit, static_argnames=("l"))
-def Rl(l: int, alpha: float, beta: float, gamma: float):
-    tol = jnp.finfo(jax.dtypes.result_type(1.0)).eps * 10
-
-    # U
-    U = jnp.zeros((2 * l + 1, 2 * l + 1), dtype=jnp.complex_)
-    Ud1 = jnp.ones(2 * l + 1) * 1j
-    indices = jnp.arange(l + 1, 2 * l + 1)
-    values = (-1) ** jnp.arange(1, l + 1)
-    Ud1 = Ud1.at[indices].set(values)
-    u_ind = jnp.arange(2 * l + 1)
-    U = U.at[u_ind, u_ind].set(Ud1)
-    U = U.at[u_ind, -u_ind - 1].set(-1j * Ud1)
-    U = U.at[l, l].set(jnp.sqrt(2))
-    U_ = U * 1 / jnp.sqrt(2)
-    # print("type U: ", type(U_))
-    # Dlm
-    m, mp = np.indices((2 * l + 1, 2 * l + 1)) - l
-    k = np.arange(0, 2 * l + 2)[:, None, None]
-
-    denom = (
-        factorial(k)
-        * factorial(l + m - k)
-        * factorial(l - mp - k)
-        * factorial(mp - m + k)
-    )
-
-    mask = denom != 0
-
-    numer = (
-        jnp.power(-1 + 0j, mp + m)
-        * jnp.sqrt(
-            factorial(l - m) * factorial(l + m) * factorial(l - mp) * factorial(l + mp)
-        )
-        * (-1) ** k
-    )
-
-    fac = (numer * mask) / (denom + ~mask * tol)
-
-    # if beta_tol is too small, it may result in nan value when taking
-    # gradient; the following value is tweaked for x64 enabled and
-    # l in range (0, 17)
-    beta_tol = 1.0e-8
-    beta = jnp.where(beta % jnp.pi == 0, beta + beta_tol, beta)
-
-    dlm = (
-        fac
-        * zero_safe_power(jnp.cos(beta / 2), (2 * l + m - mp - 2 * k))
-        * zero_safe_power(jnp.sin(beta / 2), (-m + mp + 2 * k))
-    )
-
-    dlm = jnp.nansum(dlm, 0)
-    Dlm = jnp.exp(-1j * (mp * alpha + m * gamma)) * dlm
-
-    return jnp.real(jnp.linalg.solve(U_, Dlm.T) @ U_)
-"""
-
-
 ### method 1: R_full
 def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
     """Full Wigner rotation matrix of an axis-angle rotation angle theta about vector u
@@ -234,36 +174,6 @@ def R_full(l_max: int, u: Array) -> Callable[[Array], Array]:
         return jnp.where(theta != 0, full, jnp.eye(l_max * (l_max + 2) + 1))
 
     return _R
-
-
-'''
-### method 2: R_full
-def R_full(l_max: int, u):
-    """Full Wigner rotation matrix of an axis-angle rotation angle theta about vector u
-
-    Parameters
-    ----------
-    l_max : int
-        maximum order of the spherical harmonics map
-    u : Array
-        axis-rotation vector
-
-    Returns
-    -------
-    Callable[[Array], Array]
-        a jax.vmap function of theta returning the Wigner matrix for this angle
-    """
-    n_max = l_max**2 + 2 * l_max + 1
-
-    # @partial(jnp.vectorize, signature=f"()->({n_max},{n_max})")
-    def _R(theta: Array) -> Array:
-        alpha, beta, gamma = axis_to_euler(u[0], u[1], u[2], theta)
-        c = [Rl(l, alpha, beta, gamma) for l in range(l_max + 1)]
-        full = block_diag(*c)
-        return jnp.where(theta != 0, full, jnp.eye(l_max * (l_max + 2) + 1))
-
-    return _R
-'''
 
 
 ### method 1: Rdot
