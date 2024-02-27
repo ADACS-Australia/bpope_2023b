@@ -4,35 +4,6 @@ import jax.numpy as jnp
 
 from jaxoplanet.types import Array, Scalar
 
-"""
-def get_R_frames(l_max: int, inc: float, obl: float) -> Tuple[Array, Array]:
-
-        cos_obl = jnp.cos(obl)
-        sin_obl = jnp.sin(obl)
-
-        # rotation axes
-        uo = [-cos_obl, -sin_obl, 0.0]
-        uz = [0, 0, 1]
-        ux = [1, 0, 0]
-        print("type ux: ", type(ux))
-        # jax.debug.print("🤯 {ux} 🤯", ux=ux)
-        # rotate angles
-        a1 = -((0.5 * jnp.pi) - inc)
-        a2 = obl
-        a3 = -0.5 * jnp.pi
-
-        # rotate to the sky frame
-        R_sky = R_full(l_max, uo)(a1) @ R_full(l_max, uz)(a2) @ R_full(l_max, ux)(a3)
-
-        # polar frame
-        R_p_func = R_full(l_max, ux)
-        print("rp func type: ", type(R_p_func))
-        R_polar = R_full(l_max, ux)(0.5 * jnp.pi)
-        print("rp type: ", type(R_polar))
-        # jax.debug.print("🤯 {dr} 🤯", dr=R_polar.shape)
-        return R_sky, R_polar
-"""
-
 
 class RotationPhase(NamedTuple):
     period: Scalar

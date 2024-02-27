@@ -5,10 +5,6 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from jax.config import config
-from jaxoplanet.experimental.starry.custom_jvp_rules import (
-    zero_safe_arctan2,
-    zero_safe_sqrt,
-)
 from jaxoplanet.experimental.starry.light_curve.ylm import design_matrix, light_curve
 from jaxoplanet.test_utils import assert_allclose
 
@@ -38,11 +34,7 @@ def test_compare_starry_design_matrix(l_max, n):
             0.5 * np.sqrt(np.pi)
         )
 
-    # prepare inputs
-    bo = zero_safe_sqrt(xo**2 + yo**2)
-    theta_z = zero_safe_arctan2(xo, yo)
-    # ro_ = jnp.broadcast_to(ro, bo.shape)
-    calc = design_matrix(l_max, inc, obl)(bo, zo, ro, theta, theta_z)
+    calc = design_matrix(l_max, inc, obl)(xo, yo, zo, ro, theta)
     assert_allclose(expect, calc)
 
 
@@ -73,11 +65,7 @@ def test_compare_starry_light_curve(l_max, n):
             0.5 * np.sqrt(np.pi)
         )
 
-    # prepare inputs
-    bo = zero_safe_sqrt(xo**2 + yo**2)
-    theta_z = zero_safe_arctan2(xo, yo)
-    # ro_ = jnp.broadcast_to(ro, bo.shape)
-    calc = light_curve(l_max, inc, obl, bo, zo, ro, theta, theta_z, y)
+    calc = light_curve(l_max, inc, obl, xo, yo, zo, ro, theta, y)
     assert_allclose(calc, expect)
 
 
@@ -99,19 +87,17 @@ def test_grad(theta, xyz, ro):
     xo_ = jnp.atleast_1d(xo)
     yo_ = jnp.atleast_1d(yo)
     zo_ = jnp.atleast_1d(zo)
-    bo = zero_safe_sqrt(xo_**2 + yo_**2)
-    theta_z = zero_safe_arctan2(xo_, yo_)
     ro_ = jnp.atleast_1d(ro)
     for n in range(1, 9):
         lc_grad = jax.jacfwd(light_curve, argnums=n)(
             l_max,
             inc,
             obl,
-            bo,
+            xo_,
+            yo_,
             zo_,
             ro_,
             theta,
-            theta_z,
             y,
         )
         assert np.all(np.isfinite(lc_grad))

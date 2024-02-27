@@ -5,6 +5,10 @@ import jax
 import jax.numpy as jnp
 
 from jaxoplanet.experimental.starry.basis import A1, A
+from jaxoplanet.experimental.starry.custom_jvp_rules import (
+    zero_safe_arctan2,
+    zero_safe_sqrt,
+)
 from jaxoplanet.experimental.starry.rotation import R_full
 from jaxoplanet.experimental.starry.solution import rT_solution_vector, solution_vector
 from jaxoplanet.types import Array
@@ -15,17 +19,16 @@ def light_curve(
     l_max: int,
     inc: float,
     obl: float,
-    b: Array,
-    z: Array,
+    xo: Array,
+    yo: Array,
+    zo: Array,
     r: Array,
     theta: Array,
-    theta_z: Array,
     y: Array,
     order=10,
 ):
-    # R_sky, R_polar = get_R_frames(l_max, inc, obl)
     x_func = design_matrix(l_max, inc, obl, order=order)
-    x = x_func(b, z, r, theta, theta_z)
+    x = x_func(xo, yo, zo, r, theta)
     return x @ y
 
 
@@ -71,7 +74,10 @@ def design_matrix(
     # @partial(jax.vmap, in_axes=(0,0,None,0,0))
     # @jax.vmap
     @partial(jnp.vectorize, signature=f"(),(),(),(),()->({n_max})")
-    def _X(b: Array, z: Array, r: Array, theta: Array, theta_z: Array):
+    def _X(x: Array, y: Array, z: Array, r: Array, theta: Array):
+        b = zero_safe_sqrt(x**2 + y**2)
+        theta_z = zero_safe_arctan2(x, y)
+
         # occultation mask
         cond_rot = (b >= (1.0 + r)) | (z <= 0.0) | (r == 0.0)
 

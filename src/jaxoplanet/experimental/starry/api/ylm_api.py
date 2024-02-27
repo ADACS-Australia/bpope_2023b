@@ -3,10 +3,6 @@ from typing import NamedTuple, Optional
 import jax.numpy as jnp
 import numpy as np
 
-from jaxoplanet.experimental.starry.custom_jvp_rules import (
-    zero_safe_arctan2,
-    zero_safe_sqrt,
-)
 from jaxoplanet.experimental.starry.light_curve.utils import RotationPhase
 from jaxoplanet.experimental.starry.light_curve.ylm import light_curve
 from jaxoplanet.proto import LightCurveOrbit
@@ -53,12 +49,10 @@ class YlmLightCurve(NamedTuple):
         ro = orbit.radius / r_star
 
         theta = phase.phase_curve(t)
-        b = zero_safe_sqrt(xo_**2 + yo_**2)
-        theta_z = zero_safe_arctan2(xo_, yo_)
 
         # lc_func = partial(light_curve, self.l_max, self.inc, self.obl, self.y)
         lc = light_curve(
-            self.l_max, self.inc, self.obl, b, zo_, ro, theta, theta_z, self.y
+            self.l_max, self.inc, self.obl, xo_, yo_, zo_, ro, theta, self.y
         )
 
         # lc = lc_func(xo_, yo_, zo_, ro, theta)
