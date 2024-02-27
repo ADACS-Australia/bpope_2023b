@@ -20,6 +20,7 @@ def test(session, x64):
 def comparison(session):
     session.install(".[test,test-math,comparison]", "numpy<1.21.2")
     session.run("python", "-c", "import numpy; print(numpy.__version__)")
+    session.run("pip", "freeze")
     session.run("python", "-c", "import starry")
     session.run("python", "-c", "import theano")
     session.run(
