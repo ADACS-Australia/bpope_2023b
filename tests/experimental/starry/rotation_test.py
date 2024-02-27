@@ -1,9 +1,32 @@
+from itertools import product
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from jaxoplanet.experimental.starry.rotation import R_full, Rdot, axis_to_euler, dotR
+import sympy as sm
+from jax.config import config
+from jaxoplanet.experimental.starry.rotation import (
+    R_full,
+    Rdot,
+    Rl,
+    axis_to_euler,
+    dotR,
+)
 from jaxoplanet.test_utils import assert_allclose
+from sympy.functions.special.tensor_functions import KroneckerDelta
+
+config.update("jax_enable_x64", True)
+
+
+@pytest.mark.parametrize("l_max", list(range(6)))
+@pytest.mark.parametrize("angles", [(0.0, 0.0, 0.0), (np.pi / 4, np.pi / 5, np.pi / 6)])
+def test_Rl(l_max, angles):
+    pytest.importorskip("sympy")
+    alpha, beta, gamma = angles
+    expected = np.array(REuler(l_max, alpha, beta, gamma)).astype(float)
+    calc = Rl(l_max)(alpha, beta, gamma)
+    assert_allclose(calc, expected)
 
 
 @pytest.mark.parametrize("l_max", [4, 3, 2, 1, 0])
@@ -17,7 +40,7 @@ def test_R_full(l_max, u):
     assert_allclose(calc, expected)
 
 
-@pytest.mark.parametrize("l_max", [10, 7, 5, 4])
+@pytest.mark.parametrize("l_max", [10, 7, 5, 4, 1, 0])
 @pytest.mark.parametrize("u", [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.1, 0)])
 def test_compare_starry_R_full(l_max, u):
     """Comparison test with starry full rotation matrix
@@ -60,10 +83,8 @@ def test_compare_R_full_with_starry_tensordotRz(l_max):
 
     m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
     expected = m.tensordotRz(M, theta)
-
     R_theta = R_full(l_max, [0, 0, 1])(theta)
     calc = jax.vmap(jnp.dot, in_axes=(0, 0))(M, R_theta)
-
     assert_allclose(calc, expected)
 
 
@@ -90,13 +111,11 @@ def test_compare_dotR_with_starry_dotR(l_max, u):
     n_phase = 100
     M = np.random.rand(n_phase, n_max)
 
-    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
+    m = starry._core.core.OpsYlm(l_max, 0, 0, None)
     expected = m.dotR(M, *u, theta)
 
-    theta_ = jnp.broadcast_to(theta, (n_phase,))
     dotr_func = dotR(l_max, u)
-    calc = jax.vmap(dotr_func)(M, theta_)
-
+    calc = dotr_func(M, theta)
     assert_allclose(calc, expected)
 
 
@@ -111,21 +130,32 @@ def test_compare_dotR_with_starry_tensordotRz(l_max):
     n_max = l_max**2 + 2 * l_max + 1
     M = np.random.rand(n_phase, n_max)
 
-    m = starry._core.core.OpsYlm(l_max, 0, 0, 1)
+    m = starry._core.core.OpsYlm(l_max, 0, 0, None)
     expected = m.tensordotRz(M, theta)
 
     dotr_func = dotR(l_max, u)
-    calc = jax.vmap(dotr_func)(M, theta)
+    calc = dotr_func(M, theta)
     assert_allclose(calc, expected)
 
 
 def test_u1u2_null_grad(u1=0.0, u2=0.0, u3=1.0):
     """Test gradient of axis_to_euler against nan in jnp.where"""
+    for n in range(4):
+        g = jax.jacfwd(axis_to_euler, argnums=n)(u1, u2, u3, np.pi / 4)
+        assert np.all(np.isfinite(g))
 
-    def grad_beta(u1, u2, u3, theta):
-        return axis_to_euler(u1, u2, u3, theta)[1]
 
-    assert ~jax.numpy.isnan(jax.grad(grad_beta)(u1, u2, u3, np.pi / 4))
+@pytest.mark.parametrize("l_max", list(range(17)))
+def test_Rl_grad(l_max):
+    alpha = [0.0, np.pi / 4, np.pi / 2, np.pi, 2 * np.pi]
+    beta = [-np.pi / 2, 0.0, np.pi / 4, np.pi / 2]
+    gamma = [0.0, np.pi / 4, np.pi / 2, np.pi, 2 * np.pi]
+
+    for a, b, g in product(alpha, beta, gamma):
+        for n in range(3):
+            rl_func = Rl(l_max)
+            gr = jax.jacfwd(rl_func, argnums=n)(a, b, g)
+            assert np.all(np.isfinite(gr))
 
 
 def R_symbolic(lmax, u, theta):
@@ -218,7 +248,7 @@ def R_symbolic(lmax, u, theta):
     def RAxisAngle(l, u1, u2, u3, theta):
         """Axis-angle rotation matrix."""
         # Numerical tolerance
-        tol = 1e-16
+        tol = np.finfo(np.float64).eps * 10
         if theta == 0:
             theta = tol
         if u1 == 0 and u2 == 0:
@@ -272,3 +302,87 @@ def R_symbolic(lmax, u, theta):
         return sm.BlockDiagMatrix(*blocks)
 
     return R(lmax, u, theta)
+
+
+def Dmn(l, m, n, alpha, beta, gamma):
+    """Compute the (m, n) term of the Wigner D matrix."""
+    sumterm = 0
+    # Expression diverges when beta = 0
+    if beta == 0:
+        beta = 1e-16
+    for k in range(l + m + 1):
+        sumterm += (
+            (-1) ** k
+            * sm.cos(beta / 2) ** (2 * l + m - n - 2 * k)
+            * sm.sin(beta / 2) ** (-m + n + 2 * k)
+            / (
+                sm.factorial(k)
+                * sm.factorial(l + m - k)
+                * sm.factorial(l - n - k)
+                * sm.factorial(n - m + k)
+            )
+        )
+    return (
+        sumterm
+        * sm.exp(-sm.I * (alpha * n + gamma * m))
+        * (-1) ** (n + m)
+        * sm.sqrt(
+            sm.factorial(l - m)
+            * sm.factorial(l + m)
+            * sm.factorial(l - n)
+            * sm.factorial(l + n)
+        )
+    )
+
+
+def D(l, alpha, beta, gamma):
+    res = sm.zeros(2 * l + 1, 2 * l + 1)
+    for m in range(-l, l + 1):
+        for n in range(-l, l + 1):
+            res[m + l, n + l] = Dmn(l, n, m, alpha, beta, gamma)
+    return res
+
+
+def Umn(l, m, n):
+    """Compute the (m, n) term of the transformation
+    matrix from complex to real Ylms."""
+    if n < 0:
+        term1 = sm.I
+    elif n == 0:
+        term1 = sm.sqrt(2) / 2
+    else:
+        term1 = 1
+    if (m > 0) and (n < 0) and (n % 2 == 0):
+        term2 = -1
+    elif (m > 0) and (n > 0) and (n % 2 != 0):
+        term2 = -1
+    else:
+        term2 = 1
+    return (
+        term1 * term2 * 1 / sm.sqrt(2) * (KroneckerDelta(m, n) + KroneckerDelta(m, -n))
+    )
+
+
+def U(l):
+    """Compute the U transformation matrix."""
+    res = sm.zeros(2 * l + 1, 2 * l + 1)
+    for m in range(-l, l + 1):
+        for n in range(-l, l + 1):
+            res[m + l, n + l] = Umn(l, m, n)
+    return res
+
+
+def REuler(l, alpha, beta, gamma):
+    """Return the rotation matrix for a single degree `l`."""
+    res = sm.zeros(2 * l + 1, 2 * l + 1)
+    if l == 0:
+        res[0, 0] = 1
+        return res
+    foo = sm.re(U(l).inv() * D(l, alpha, beta, gamma) * U(l))
+    for m in range(2 * l + 1):
+        for n in range(2 * l + 1):
+            if abs(foo[m, n]) < 1e-15:
+                res[m, n] = 0
+            else:
+                res[m, n] = foo[m, n]
+    return res
